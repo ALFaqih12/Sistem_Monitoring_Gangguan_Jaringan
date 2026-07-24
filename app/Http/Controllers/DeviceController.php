@@ -3,16 +3,45 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
+use App\Services\PrometheusTargetService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class DeviceController extends Controller
 {
-    // 1. Menampilkan Halaman Utama (Tabel & Form)
-    public function index()
+    /**
+     * Menyimpan service target Prometheus agar controller hanya fokus pada alur request device.
+     */
+    public function __construct(private readonly PrometheusTargetService $prometheusTargets)
     {
-        $devices = Device::latest()->get();
-        return view('devices.index', compact('devices'));
+    }
+
+    /**
+     * Menampilkan Halaman Utama dengan Tabel, Form, dan Pagination.
+     * Mendukung pencarian server-side yang mencakup semua data di seluruh halaman pagination.
+     */
+    public function index(Request $request)
+    {
+        // Ambil keyword pencarian dari request (jika ada)
+        $search = $request->input('search');
+
+        // Query data device dengan pagination 15 per halaman
+        $devices = Device::query()
+            ->when($search, function ($query, $search) {
+                // Pencarian server-side di semua kolom yang relevan
+                return $query->where(function ($q) use ($search) {
+                    $q->where('customer_id', 'like', "%{$search}%")
+                      ->orWhere('customer_name', 'like', "%{$search}%")
+                      ->orWhere('ip_address', 'like', "%{$search}%")
+                      ->orWhere('device_model', 'like', "%{$search}%");
+                });
+            })
+            ->latest()
+            ->paginate(15)
+            ->withQueryString(); // Mempertahankan parameter search di URL pagination
+
+        return view('devices.index', compact('devices', 'search'));
     }
 
     // 2. Menyimpan Data ke Database
@@ -26,17 +55,26 @@ class DeviceController extends Controller
             'maps_url' => 'nullable|url'
         ]);
 
-        if (session('verified_device_ip') !== $validated['ip_address']) {
+        if (! $this->isVerifiedDeviceIp($validated['ip_address'])) {
             return back()
                 ->withErrors(['ip_address' => 'IP target harus berhasil Connect sebelum data disimpan.'])
                 ->withInput();
         }
 
-        // Simpan data, (customer_id otomatis terisi lewat fungsi boot() di Model Device)
-        $device = Device::create($validated);
+        try {
+            // Transaksi menjaga data database batal tersimpan jika update target Prometheus gagal.
+            DB::transaction(function () use ($validated) {
+                $device = Device::create($validated);
 
-        $this->updatePrometheusTargets($device->ip_address);
-        $request->session()->forget('verified_device_ip');
+                $this->prometheusTargets->addTarget($device->ip_address);
+            });
+
+            $this->forgetVerifiedDeviceIp($validated['ip_address']);
+        } catch (Throwable $e) {
+            return back()
+                ->withErrors(['ip_address' => 'Data gagal disimpan karena target Prometheus tidak dapat diperbarui: ' . $e->getMessage()])
+                ->withInput();
+        }
 
         return redirect()->route('devices.index')->with('success', 'Data target device berhasil ditambahkan!');
     }
@@ -44,8 +82,19 @@ class DeviceController extends Controller
     // 3. Fungsi AJAX saat tombol "Connect" diklik
     public function pingDevice(Request $request)
     {
-        $ip = $request->ip_address;
+        $validated = $request->validate([
+            'ip_address' => 'required|ipv4',
+        ]);
+
+        $ip = $validated['ip_address'];
         $community = "public"; // Sesuaikan dengan community string di perangkat Anda
+
+        if (! function_exists('snmpget')) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Extension SNMP PHP belum aktif, sehingga perangkat belum bisa dicek.',
+            ], 500);
+        }
 
         try {
             // Menggunakan snmpget untuk mengambil deskripsi sistem
@@ -62,61 +111,18 @@ class DeviceController extends Controller
                 ], 500);
             }
 
-            $request->session()->put('verified_device_ip', $ip);
+            $this->rememberVerifiedDeviceIp($ip);
 
             return response()->json([
                 'status' => 'success',
                 'device_model' => $deviceModel,
                 'message' => 'Koneksi berhasil! Model perangkat berhasil terdeteksi.'
             ]);
-        } catch (\Exception $e) {
+        } catch (Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Gagal terkoneksi via SNMP: ' . $e->getMessage()
             ], 500);
-        }
-    }
-
-    // 4. Fungsi Private untuk Menulis ke File targets.json
-    private function updatePrometheusTargets($newIp)
-    {
-        /* 
-         * Mencari file targets.json. 
-         * Karena web-app berada di dalam folder monitoring (sejajar dengan prometheus),
-         * kita menggunakan base_path('../') untuk mundur satu folder.
-         */
-        $filePath = base_path('../prometheus/targets.json');
-
-        // Jika file belum ada, buat array kosong
-        if (!File::exists($filePath)) {
-            $targets = [];
-        } else {
-            // Baca file yang ada
-            $jsonString = File::get($filePath);
-            $targets = json_decode($jsonString, true) ?? [];
-        }
-
-        // Cek apakah IP sudah ada untuk mencegah duplikasi data di Prometheus
-        $ipExists = false;
-        foreach ($targets as $target) {
-            if (in_array("{$newIp}", $target['targets'])) {
-                $ipExists = true;
-                break;
-            }
-        }
-
-        // Jika IP baru, tambahkan ke dalam struktur JSON
-        if (!$ipExists) {
-            $targets[] = [
-                'targets' => ["{$newIp}"], 
-                'labels' => [
-                    'instance' => $newIp,
-                    'job' => 'snmp'
-                ]
-            ];
-
-            // Tulis dan simpan kembali ke file targets.json
-            File::put($filePath, json_encode($targets, JSON_PRETTY_PRINT));
         }
     }
 
@@ -134,31 +140,42 @@ class DeviceController extends Controller
             // Validasi unik dikecualikan untuk ID device yang sedang diedit
             'ip_address' => 'required|ipv4|unique:devices,ip_address,' . $device->id,
             'device_model' => 'nullable|string',
+            'installation_date' => 'required|date',
             'maps_url' => 'nullable|url'
         ]);
 
         $oldIp = $device->ip_address;
 
-        if ($oldIp !== $validated['ip_address'] && session('verified_device_ip') !== $validated['ip_address']) {
+        if ($oldIp !== $validated['ip_address'] && ! $this->isVerifiedDeviceIp($validated['ip_address'])) {
             return back()
                 ->withErrors(['ip_address' => 'IP target baru harus berhasil Connect sebelum perubahan disimpan.'])
                 ->withInput();
         }
 
-        // Update data
-        $device->update([
-            'customer_name' => $validated['customer_name'],
-            'ip_address' => $validated['ip_address'],
-            'device_model' => $validated['device_model'] ?? null,
-            'maps_url' => $validated['maps_url'] ?? null,
-        ]);
+        try {
+            // Transaksi menjaga perubahan device batal jika sinkronisasi target Prometheus gagal.
+            DB::transaction(function () use ($device, $validated, $oldIp) {
+                $device->update([
+                    'customer_name' => $validated['customer_name'],
+                    'ip_address' => $validated['ip_address'],
+                    'device_model' => $validated['device_model'] ?? null,
+                    'installation_date' => $validated['installation_date'],
+                    'maps_url' => $validated['maps_url'] ?? null,
+                ]);
 
-        if ($oldIp !== $device->ip_address) {
-            $this->removePrometheusTarget($oldIp);
+                if ($oldIp !== $device->ip_address) {
+                    $this->prometheusTargets->removeTarget($oldIp);
+                }
+
+                $this->prometheusTargets->addTarget($device->ip_address);
+            });
+
+            $this->forgetVerifiedDeviceIp($validated['ip_address']);
+        } catch (Throwable $e) {
+            return back()
+                ->withErrors(['ip_address' => 'Data gagal diperbarui karena target Prometheus tidak dapat diperbarui: ' . $e->getMessage()])
+                ->withInput();
         }
-
-        $this->updatePrometheusTargets($device->ip_address);
-        $request->session()->forget('verified_device_ip');
 
         return redirect()->route('devices.index')->with('success', 'Data device ' . $device->customer_name . ' berhasil diperbarui!');
     }
@@ -169,34 +186,48 @@ class DeviceController extends Controller
         $ip = $device->ip_address;
         $name = $device->customer_name;
 
-        // 1. Hapus dari file Prometheus targets.json
-        $this->removePrometheusTarget($ip);
+        try {
+            // Transaksi menjaga data device tetap ada jika target Prometheus gagal dihapus.
+            DB::transaction(function () use ($device, $ip) {
+                $this->prometheusTargets->removeTarget($ip);
 
-        // 2. Hapus dari database MySQL
-        $device->delete();
+                $device->delete();
+            });
+        } catch (Throwable $e) {
+            return back()->withErrors(['device' => 'Data gagal dihapus karena target Prometheus tidak dapat diperbarui: ' . $e->getMessage()]);
+        }
 
         return redirect()->route('devices.index')->with('success', 'Data device ' . $name . ' berhasil dihapus dari sistem dan Prometheus!');
     }
 
-    // Fungsi Private untuk Menghapus IP dari file targets.json
-    private function removePrometheusTarget($ipToRemove)
+    /**
+     * Mengecek apakah IP sudah pernah lolos tombol Connect pada session browser ini.
+     */
+    private function isVerifiedDeviceIp(string $ipAddress): bool
     {
-        $filePath = base_path('../prometheus/targets.json');
+        return in_array($ipAddress, session('verified_device_ips', []), true);
+    }
 
-        if (\Illuminate\Support\Facades\File::exists($filePath)) {
-            $jsonString = \Illuminate\Support\Facades\File::get($filePath);
-            $targets = json_decode($jsonString, true) ?? [];
+    /**
+     * Menyimpan daftar IP yang sudah lolos Connect agar beberapa tab tidak saling menimpa.
+     */
+    private function rememberVerifiedDeviceIp(string $ipAddress): void
+    {
+        $verifiedIps = session('verified_device_ips', []);
+        $verifiedIps[] = $ipAddress;
 
-            // Filter array: Buang target yang IP-nya cocok dengan yang akan dihapus
-            $filteredTargets = array_filter($targets, function($target) use ($ipToRemove) {
-                return !in_array("{$ipToRemove}", $target['targets']);
-            });
+        session(['verified_device_ips' => array_values(array_unique($verifiedIps))]);
+    }
 
-            // Susun ulang index array (karena array_filter bisa membuat index bolong)
-            $reindexedTargets = array_values($filteredTargets);
+    /**
+     * Menghapus IP dari daftar verifikasi setelah data berhasil disimpan atau diperbarui.
+     */
+    private function forgetVerifiedDeviceIp(string $ipAddress): void
+    {
+        $verifiedIps = array_filter(session('verified_device_ips', []), function (string $verifiedIp) use ($ipAddress): bool {
+            return $verifiedIp !== $ipAddress;
+        });
 
-            // Simpan kembali ke file
-            \Illuminate\Support\Facades\File::put($filePath, json_encode($reindexedTargets, JSON_PRETTY_PRINT));
-        }
+        session(['verified_device_ips' => array_values($verifiedIps)]);
     }
 }

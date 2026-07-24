@@ -8,6 +8,8 @@
 
 - Baca arsitektur.md sebagai pengetahuan seluruh arsitektur pada sistem ini
 
+- Baca LOGupdate.md untuk mengetahui riwayat perubahan atau perbaikan terkini yang sudah dilakukan
+
 - Baca secara mendalam semua yang ada di dalam folder Http, Models, database, public, routes
 
 - Informasi tambahan, web ini berbentuk SPA (Single Page Application)

@@ -1,8 +1,8 @@
-<!-- Panggil Master Layout -->
+﻿<!-- Panggil Master Layout -->
 @extends('layouts.app')
 
 <!-- Tambahkan CSS khusus halaman ini ke dalam stack 'styles' di master layout -->
-@stack('styles')
+@push('styles')
 <style>
     /* CSS Khusus Form & Table Device */
     h2 { margin-bottom: 20px; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
@@ -33,6 +33,7 @@
     .cell-strong { color: #243447; }
     .cell-ip { font-family: Consolas, 'Courier New', monospace; color: #1f618d; font-weight: 600; }
     .alert-success { background-color: #d4edda; color: #155724; padding: 12px; border-radius: 4px; margin-bottom: 15px; }
+    .alert-error { background-color: #fdecea; color: #922b21; padding: 12px; border-radius: 4px; margin-bottom: 15px; }
     .badge { display: inline-block; max-width: 260px; padding: 5px 9px; border-radius: 999px; font-size: 12px; background-color: #eef5fb; color: #2c3e50; border: 1px solid #d7e7f5; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
     .location-link { display: inline-block; padding: 6px 10px; border-radius: 4px; background: #edf7f2; color: #1e8449; text-decoration: none; font-size: 13px; font-weight: 700; }
     .location-link:hover { background: #d9f0e3; }
@@ -42,63 +43,82 @@
 
     .btn-danger { background-color: #e74c3c; color: white; border: none; display: inline-flex; align-items: center; justify-content: center; min-width: 64px; padding: 7px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s; }
     .btn-danger:hover { background-color: #c0392b; }
-    .action-buttons { display: flex; align-items: center; gap: 8px; } /* Agar tombol edit dan hapus bersebelahan */
+    .action-buttons { display: flex; align-items: center; gap: 8px; }
     .action-buttons form { margin: 0; }
 
-    .dataTables_wrapper .dataTables_length,
-    .dataTables_wrapper .dataTables_filter { margin-bottom: 14px; }
-    .dataTables_wrapper .dataTables_length select,
-    .dataTables_wrapper .dataTables_filter input { border: 1px solid #cfd8e3; border-radius: 4px; padding: 6px 8px; margin: 0 6px; }
-    .dataTables_wrapper .dataTables_info { padding-top: 16px; color: #607080; font-size: 13px; }
-    .dataTables_wrapper .dataTables_paginate { padding-top: 12px; }
-    .dataTables_wrapper .dataTables_paginate .paginate_button { border-radius: 4px !important; border: 1px solid transparent !important; padding: 6px 10px !important; }
-    .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: #3498db !important; color: white !important; border-color: #3498db !important; }
+    .table-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .search-form { display: flex; gap: 8px; align-items: center; }
+    .table-search { width: 280px; max-width: 100%; padding: 9px 10px; border: 1px solid #cfd8e3; border-radius: 4px; }
+    .btn-search { background-color: #3498db; color: white; padding: 9px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .btn-search:hover { background-color: #2980b9; }
+    .btn-clear { background-color: #95a5a6; color: white; padding: 9px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px; text-decoration: none; display: inline-block; }
+    .btn-clear:hover { background-color: #7f8c8d; }
+    .empty-row { text-align: center; color: #607080; padding: 18px; }
+
+    /* CSS untuk Pagination */
+    .pagination-wrapper { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e8edf3; }
+    .pagination-info { color: #607080; font-size: 13px; }
+    .pagination { display: flex; list-style: none; gap: 5px; margin: 0; padding: 0; }
+    .pagination li { display: inline-block; }
+    .pagination a, .pagination span { display: inline-block; padding: 8px 12px; border: 1px solid #cfd8e3; border-radius: 4px; color: #2c3e50; text-decoration: none; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+    .pagination a:hover { background-color: #3498db; color: white; border-color: #3498db; }
+    .pagination .active span { background-color: #3498db; color: white; border-color: #3498db; }
+    .pagination .disabled span { color: #95a5a6; cursor: not-allowed; border-color: #e8edf3; }
+    .pagination .disabled span:hover { background-color: transparent; color: #95a5a6; }
 </style>
+@endpush
 
 <!-- Masukkan HTML konten ke dalam area 'content' di master layout -->
 @section('content')
 <div>
     <h2>Manajemen Target Device</h2>
 
+    @if(session('success'))
+        <div class="alert-success alert-flash" id="successAlert">{{ session('success') }}</div>
+    @endif
+
+    @if($errors->any())
+        <div class="alert-error">
+            @foreach($errors->all() as $error)
+                <div>{{ $error }}</div>
+            @endforeach
+        </div>
+    @endif
+
     <button class="btn btn-primary" id="btnToggleForm">+ Add Device Target</button>
 
-    <div class="form-panel" id="deviceFormPanel">
+    <div class="form-panel" id="deviceFormPanel" @if($errors->any()) style="display:block;" @endif>
         <form action="{{ route('devices.store') }}" method="POST">
             @csrf
             
             <div class="form-group">
                 <label>IP Address Target</label>
                 <div class="form-group-inline">
-                    <input type="text" name="ip_address" id="ip_address" placeholder="Contoh: 192.168.10.5" required>
+                    <input type="text" name="ip_address" id="ip_address" value="{{ old('ip_address') }}" required>
                     <button type="button" class="btn btn-connect" id="btnConnect">Connect</button>
                 </div>
-                <small id="connectStatus" style="display:block; margin-top:5px; font-weight:bold;"></small>
-                <small style="display:block; margin-top:4px; color:#607080;">Data hanya bisa disimpan setelah IP berhasil Connect.</small>
+                <small id="connectStatus" style="font-weight: bold; margin-top: 5px; display: block;"></small>
             </div>
 
             <div class="form-group">
                 <label>Model Perangkat</label>
-                <input type="text" name="device_model" id="device_model" placeholder="Akan terisi otomatis setelah Connect..." readonly>
+                <!-- Input ini akan diupdate via JS saat tombol Connect diklik -->
+                <input type="text" name="device_model" id="device_model" value="{{ old('device_model') }}" readonly>
             </div>
 
             <div class="form-group">
                 <label>Nama Pelanggan</label>
-                <input type="text" name="customer_name" required>
-            </div>
-
-            <div class="form-group">
-                <label>ID Pelanggan</label>
-                <input type="text" placeholder="Otomatis digenerate oleh sistem" disabled>
+                <input type="text" name="customer_name" value="{{ old('customer_name') }}" required>
             </div>
 
             <div class="form-group">
                 <label>Tanggal Pemasangan</label>
-                <input type="date" name="installation_date" value="{{ date('Y-m-d') }}" required>
+                <input type="date" name="installation_date" value="{{ old('installation_date') }}" required>
             </div>
 
             <div class="form-group">
                 <label>URL Maps Lokasi</label>
-                <input type="url" name="maps_url">
+                <input type="url" name="maps_url" value="{{ old('maps_url') }}">
             </div>
 
             <button type="submit" class="btn btn-success" id="btnSubmit" disabled>Submit Data</button>
@@ -106,7 +126,22 @@
     </div>
 
     <div class="table-panel">
-        <h3>Daftar Target Device Terpantau</h3>
+        <h3>Daftar Target Device</h3>
+
+        <!-- Toolbar Search dengan Form Submit Server-Side -->
+        <div class="table-toolbar">
+            <div class="pagination-info">
+                Menampilkan {{ $devices->firstItem() ?? 0 }} - {{ $devices->lastItem() ?? 0 }} dari {{ $devices->total() }} data
+            </div>
+            <form method="GET" action="{{ route('devices.index') }}" class="search-form">
+                <input type="text" name="search" class="table-search" placeholder="Cari ID, Nama, IP, Model..." value="{{ $search ?? '' }}">
+                <button type="submit" class="btn-search">Cari</button>
+                @if($search)
+                    <a href="{{ route('devices.index') }}" class="btn-clear">Reset</a>
+                @endif
+            </form>
+        </div>
+
         <div class="table-responsive">
             <table id="deviceTable">
                 <thead>
@@ -114,23 +149,26 @@
                         <th>ID Pelanggan</th>
                         <th>Nama Pelanggan</th>
                         <th>IP Address</th>
-                        <th>Model</th>
+                        <th>Model Device</th>
                         <th>Lokasi</th>
                         <th>Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($devices as $device)
+                    @forelse($devices as $device)
                         <tr>
-                            <td><strong class="cell-strong">{{ $device->customer_id }}</strong></td>
-                            <td>{{ $device->customer_name }}</td>
+                            <td><span class="badge">{{ $device->customer_id }}</span></td>
+                            <td class="cell-strong">{{ $device->customer_name }}</td>
                             <td class="cell-ip">{{ $device->ip_address }}</td>
-                            <td><span class="badge">{{ $device->device_model ?: 'Belum terdeteksi' }}</span></td>
+                            <td>{{ $device->device_model ?? '-' }}</td>
                             <td>
-                                @if($device->maps_url) <a href="{{ $device->maps_url }}" target="_blank" class="location-link">Location</a> @else - @endif
+                                @if($device->maps_url)
+                                    <a href="{{ $device->maps_url }}" target="_blank" class="location-link">Lihat Lokasi</a>
+                                @else
+                                    <span style="color: #95a5a6;">-</span>
+                                @endif
                             </td>
                             <td>
-                                <!-- Bungkus tombol dalam div agar bersebelahan rapi -->
                                 <div class="action-buttons">
                                     <!-- Tombol Edit -->
                                     <a href="{{ route('devices.edit', $device->id) }}" class="btn-warning">Edit</a>
@@ -144,10 +182,53 @@
                                 </div>
                             </td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr>
+                            <td colspan="6" class="empty-row">
+                                @if($search)
+                                    Data tidak ditemukan untuk pencarian "{{ $search }}".
+                                @else
+                                    Belum ada data target device.
+                                @endif
+                            </td>
+                        </tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>
+
+        <!-- Komponen Pagination -->
+        @if($devices->hasPages())
+            <div class="pagination-wrapper">
+                <div class="pagination-info">
+                    Halaman {{ $devices->currentPage() }} dari {{ $devices->lastPage() }}
+                </div>
+                <ul class="pagination">
+                    {{-- Previous Page Link --}}
+                    @if ($devices->onFirstPage())
+                        <li class="disabled"><span>&laquo; Prev</span></li>
+                    @else
+                        <li><a href="{{ $devices->previousPageUrl() }}">&laquo; Prev</a></li>
+                    @endif
+
+                    {{-- Pagination Elements --}}
+                    @foreach ($devices->getUrlRange(1, $devices->lastPage()) as $page => $url)
+                        @if ($page == $devices->currentPage())
+                            <li class="active"><span>{{ $page }}</span></li>
+                        @else
+                            <li><a href="{{ $url }}">{{ $page }}</a></li>
+                        @endif
+                    @endforeach
+
+                    {{-- Next Page Link --}}
+                    @if ($devices->hasMorePages())
+                        <li><a href="{{ $devices->nextPageUrl() }}">Next &raquo;</a></li>
+                    @else
+                        <li class="disabled"><span>Next &raquo;</span></li>
+                    @endif
+                </ul>
+            </div>
+        @endif
     </div>
 </div>
 @endsection
@@ -164,6 +245,7 @@
     const connectStatus = document.getElementById('connectStatus');
     let verifiedIpAddress = null;
 
+    // Toggle form Add Device
     btnToggleForm.addEventListener('click', function() {
         if (formPanel.style.display === 'none' || formPanel.style.display === '') {
             formPanel.style.display = 'block';
@@ -176,6 +258,7 @@
         }
     });
 
+    // Reset verifikasi IP jika IP diubah oleh user
     ipInput.addEventListener('input', function() {
         if (ipInput.value.trim() !== verifiedIpAddress) {
             verifiedIpAddress = null;
@@ -185,6 +268,7 @@
         }
     });
 
+    // Proses Connect ke perangkat via SNMP
     btnConnect.addEventListener('click', function() {
         const ipAddress = ipInput.value.trim();
         if (ipAddress === '') return alert('Isi IP Address!');
@@ -197,7 +281,7 @@
 
         fetch("{{ route('devices.ping') }}", {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
             body: JSON.stringify({ ip_address: ipAddress })
         })
         .then(async response => {
@@ -231,42 +315,12 @@
         });
     });
 
-
-    @if(session('success'))
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end', // Muncul dari atas kanan
-            showConfirmButton: false,
-            timer: 3000, // Hilang otomatis dalam 3 detik
-            timerProgressBar: true, // Ada bar progress yang menyusut
-            didOpen: (toast) => {
-                toast.addEventListener('mouseenter', Swal.stopTimer)
-                toast.addEventListener('mouseleave', Swal.resumeTimer)
-            }
-        });
-
-        Toast.fire({
-            icon: 'success',
-            title: "{{ session('success') }}"
-        });
-    @endif
-
-    $(document).ready(function() {
-        $('#deviceTable').DataTable({
-            "paging": true,          // Mengaktifkan pagination
-            "lengthChange": true,    // Mengaktifkan pilihan jumlah baris per halaman
-            "searching": true,       // Mengaktifkan kolom pencarian
-            "ordering": true,        // Mengaktifkan sorting (klik header tabel)
-            "info": true,            // Menampilkan informasi jumlah data
-            "autoWidth": false,
-            "language": {
-                "search": "Cari Perangkat:", // Mengubah bahasa tombol cari
-                "paginate": {
-                    "previous": "Sebelumnya",
-                    "next": "Selanjutnya"
-                }
-            }
-        });
-    });
+    // Auto-hide alert success setelah 3 detik
+    const successAlert = document.getElementById('successAlert');
+    if (successAlert) {
+        setTimeout(function() {
+            successAlert.style.opacity = '0';
+        }, 3000);
+    }
 </script>
 @endpush

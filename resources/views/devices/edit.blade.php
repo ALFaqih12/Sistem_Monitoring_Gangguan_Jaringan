@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@stack('styles')
+@push('styles')
 <style>
     h2 { margin-bottom: 20px; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
     .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; }
@@ -17,13 +17,23 @@
     .btn-connect { background-color: #e67e22; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; }
     .btn-connect:disabled { background-color: #bdc3c7; }
     #connectStatus { font-weight: bold; margin-top: 5px; display: block; }
+    .alert-error { background-color: #fdecea; color: #922b21; padding: 12px; border-radius: 4px; margin-bottom: 15px; }
 </style>
+@endpush
 
 @section('content')
 <div>
     <h2>Edit Data Target Device</h2>
     
     <a href="{{ route('devices.index') }}" class="btn-secondary"> Kembali</a>
+
+    @if($errors->any())
+        <div class="alert-error">
+            @foreach($errors->all() as $error)
+                <div>{{ $error }}</div>
+            @endforeach
+        </div>
+    @endif
 
     <div class="form-panel">
         <form action="{{ route('devices.update', $device->id) }}" method="POST" id="editForm">
@@ -43,12 +53,17 @@
             <div class="form-group">
                 <label>Model Perangkat</label>
                 <!-- Input ini akan diupdate via JS saat tombol Connect diklik -->
-                <input type="text" name="device_model" id="device_model" value="{{ $device->device_model }}" readonly>
+                <input type="text" name="device_model" id="device_model" value="{{ old('device_model', $device->device_model) }}" readonly>
             </div>
 
             <div class="form-group">
                 <label>Nama Pelanggan</label>
                 <input type="text" name="customer_name" value="{{ old('customer_name', $device->customer_name) }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Tanggal Pemasangan</label>
+                <input type="date" name="installation_date" value="{{ old('installation_date', $device->installation_date) }}" required>
             </div>
 
             <div class="form-group">
@@ -102,7 +117,7 @@
 
         fetch("{{ route('devices.ping') }}", {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
             body: JSON.stringify({ ip_address: ipAddress })
         })
         .then(async response => {
