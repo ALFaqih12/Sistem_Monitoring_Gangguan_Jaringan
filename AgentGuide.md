@@ -12,6 +12,8 @@
 
 - Baca secara mendalam semua yang ada di dalam folder Http, Models, database, public, routes
 
+- Baca TO-DO.md untuk mengetahui rancangan yang akan di buat saat ini
+
 - Informasi tambahan, web ini berbentuk SPA (Single Page Application)
 
 ## Aksi

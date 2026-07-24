@@ -98,8 +98,12 @@
                     Manajemen Target Device
                 </a>
             </li>
+            <li>
+                <a href="{{ route('rules.index') }}" class="{{ request()->routeIs('rules.*') ? 'active' : '' }}">
+                    Rule Forward Chaining
+                </a>
+            </li>
             <!-- Menu modul selanjutnya akan kita tambahkan di sini nanti -->
-            <!-- <li><a href="#">Rule Forward Chaining</a></li> -->
             <!-- <li><a href="#">Log Gangguan</a></li> -->
             <!-- <li><a href="#">Manajemen Alert</a></li> -->
         </ul>
