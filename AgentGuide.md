@@ -6,13 +6,15 @@
 
 - Baca PRD.md sebagai panduan dalam pembuatan proyek
 
-- Baca arsitektur.md sebagai pengetahuan seluruh arsitektur pada sistem ini
+- Baca arsitektur.md sebagai pengetahuan alur arsitektur pada sistem ini
 
 - Baca LOGupdate.md untuk mengetahui riwayat perubahan atau perbaikan terkini yang sudah dilakukan
 
+- Baca seluruh TO-DO.md untuk mengetahui apa yang akan kita kerjakan, namun diskusikan terlebih dahulu dan beri konfirmasi jika ingin memulai pengerjaan
+
 - Baca secara mendalam semua yang ada di dalam folder Http, Models, database, public, routes
 
-- Baca TO-DO.md untuk mengetahui rancangan yang akan di buat saat ini
+- jangan gunakan emoticon apapun dalam pembuatan fitur
 
 - Informasi tambahan, web ini berbentuk SPA (Single Page Application)
 

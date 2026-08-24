@@ -19,6 +19,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Paksa zona waktu real-time = Asia/Jakarta agar now(), detected_at,
+        // dan TTL cache worker selalu sejalan dengan jam sistem lokal.
+        date_default_timezone_set(env('APP_TIMEZONE', 'Asia/Jakarta'));
     }
 }

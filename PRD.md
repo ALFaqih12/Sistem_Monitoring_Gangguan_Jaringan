@@ -18,7 +18,7 @@
 
 ## Target Pengguna
 
-- admin Penyedia layanan WIFI
+- hanya diperuntukan untuk 1 user yaitu admin Penyedia layanan WIFI
 
 ## Fitur / Modul
 

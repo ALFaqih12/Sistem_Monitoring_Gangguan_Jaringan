@@ -1,8 +1,9 @@
-# To do list yang akan kita rancang
+# To do list yang akan kita kerjakan
 
-## Modul Dashboard
+## Memperbarui Modul Log Gangguan
 
-- Card Total Target untuk total data yang ada di modul Manajemen Target Device
-- Card Total Rule untuk total data yang ada di modul Rule Forward Chaining
-- Togle ON/OFF Start Monitoring untuk memulai schedular secara otomatis dan tersu menerus
-- Modul Dashboard ini letaknya di paling atas dari seluruh modul yang ada karena modul ini akan di jadikan sebagai root ketika web di akses modul ini lah yang pertama kali muncul
+- Jika data traffic pada perangkat, match dengan rule yang sama berulang kali, jangan buat baris baru pada tabel log gangguan cukup update data metric dan waktu terbarunya saja pada baris yang sudah terbuat sebelumnya, tetapi jika match dengan rule berbeda buat baris baru.
+
+- Jika data traffic pada perangkat sudah tidak match lagi (data traffic berubah dan tidah memenuhi syarat pada rule) hapus baris tersebut dari log gangguan secara otomatis.
+
+- ganti kolom status dengan data lokasi yang sudah ada pada perangkat

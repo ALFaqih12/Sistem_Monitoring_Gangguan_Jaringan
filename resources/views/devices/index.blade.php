@@ -1,4 +1,4 @@
-﻿<!-- Panggil Master Layout -->
+<!-- Panggil Master Layout -->
 @extends('layouts.app')
 
 <!-- Tambahkan CSS khusus halaman ini ke dalam stack 'styles' di master layout -->
@@ -174,7 +174,7 @@
                                     <a href="{{ route('devices.edit', $device->id) }}" class="btn-warning">Edit</a>
                                     
                                     <!-- Tombol Delete (Harus menggunakan form karena method DELETE) -->
-                                    <form action="{{ route('devices.destroy', $device->id) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus target ini? Data IP juga akan dihapus dari antrean Prometheus.');">
+                                    <form action="{{ route('devices.destroy', $device->id) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus target ini? Data IP juga akan dihapus dari antrean Prometheus.\n\nPerhatian: Rule yang menarget device ini TIDAK akan ikut terhapus, namun target device pada rule akan menjadi tidak terikat (Device Tidak Ditemukan).');">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="btn-danger">Hapus</button>
@@ -324,3 +324,5 @@
     }
 </script>
 @endpush
+
+

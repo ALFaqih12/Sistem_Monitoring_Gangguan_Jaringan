@@ -1,12 +1,13 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\RuleController;
+use App\Http\Controllers\IssueLogController;
 
-Route::get('/', function () {
-    return redirect()->route('devices.index');
-});
+// Route utama Dashboard (root /)
+Route::get('/', [DashboardController::class, 'index'])->name('dashboard.index');
 
 // Routes untuk Modul Target Device
 Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
@@ -27,3 +28,11 @@ Route::get('/rules/{rule}/edit', [RuleController::class, 'edit'])->name('rules.e
 Route::put('/rules/{rule}', [RuleController::class, 'update'])->name('rules.update');
 Route::delete('/rules/{rule}', [RuleController::class, 'destroy'])->name('rules.destroy');
 Route::post('/rules/{rule}/toggle', [RuleController::class, 'toggle'])->name('rules.toggle');
+
+// Routes untuk Modul Log Gangguan
+Route::get('/issue-logs', [IssueLogController::class, 'index'])->name('issue-logs.index');
+// API endpoint untuk auto-refresh UI via AJAX (fetch data tiap 30 detik)
+Route::get('/api/issue-logs', [IssueLogController::class, 'indexApi'])->name('api.issue-logs.index');
+
+// Route AJAX untuk toggle monitoring di Dashboard
+Route::post('/monitoring/toggle', [DashboardController::class, 'toggleMonitoring'])->name('monitoring.toggle');

@@ -1,4 +1,238 @@
+## 2026-08-22
+
+### Update Modul Log Gangguan + Auto-Refresh UI
+
+- **ForwardChainingService.php**: Perubahan logika penyimpanan issue log menjadi UPSERT.
+    - Method `saveIssueLog()`: jika sudah ada IssueLog untuk kombinasi `device_id + rule_id` yang sama, UPDATE metrics + `detected_at` + `maps_url` (bukan buat baru). Jika belum ada, buat baris baru (hanya untuk rule berbeda pada device yang sama).
+    - Kolom `maps_url` sekarang diisi otomatis dari device yang bersangkutan (sebelumnya tidak di-set).
+    - Hapus referensi kolom `status` dan `notes` yang sudah di-drop migration.
+    - Dipisahkan deduplikasi alert (cache/TTL) dari penyimpanan log — log selalu di-upsert tiap kali match, sedangkan alert Telegram hanya dikirim sekali per TTL window.
+
+- **ForwardChainingService.php**: Penambahan cleanup stale logs.
+    - Method baru `cleanupStaleLogs(array $matchedPairs)`: menghapus IssueLog yang tidak lagi match dengan rule manapun setelah setiap cycle evaluasi.
+    - Jika tidak ada rule yang match → hapus semua issue logs.
+    - Mencegah tabel log menumpuk data ketinggalan.
+
+- **IssueLogController.php**: Penghapusan method yang tidak terpakai & penambahan API endpoint.
+    - Hapus method `updateStatus()` dan `updateNotes()` (kolom status/notes sudah dihapus dari DB).
+    - Hapus filter `status` di method `index()`.
+    - Tambah method `indexApi()` — mengembalikan log gangguan sebagai JSON untuk konsumsi AJAX.
+
+- **routes/web.php**: Update route.
+    - Hapus route `POST /issue-logs/{log}/status` dan `POST /issue-logs/{log}/notes`.
+    - Tambah route `GET /api/issue-logs` (name: `api.issue-logs.index`) untuk AJAX auto-refresh.
+
+- **resources/views/issue_logs/index.blade.php**: Redesign tabel & auto-refresh.
+    - Ganti kolom **Status** (badge new/ongoing/resolved) dengan kolom **Lokasi** (`maps_url` sebagai link "Buka Maps").
+    - Hapus kolom **Catatan** dan kolom **Aksi**.
+    - Hapus modal Update Status, modal Add Notes, dan seluruh JavaScript AJAX-nya.
+    - Tambah auto-refresh UI: fetch ke `/api/issue-logs` setiap 60 detik via `setInterval`.
+    - Tambah indicator "Terakhir update: HH:MM:SS", tombol "Refresh Manual", dan dot status hijau/orange.
+    - JavaScript menggunakan `!= null` (loose equality) untuk mencegah `undefined` crash, null-safe access untuk `log.rule` & `log.device`, dan `parseFloat()` untuk perbandingan threshold.
+    - Tambah `.catch()` handler dengan notifikasi error di indicator.
+
+- **database/migrations/2026_08_22_000000_update_issue_logs_table.php**: Fix SQLite compatibility.
+    - Tambah `dropIndex('issue_logs_status_index')` sebelum `dropColumn(['status', 'notes'])`, dilakukan secara conditional (hanya di SQLite driver) agar tidak error di MySQL.
+    - Migration sudah dijalankan ke MySQL produksi — kolom `status` dan `notes` berhasil dihapus, kolom `maps_url` berhasil ditambahkan.
+
+- **Interval penyelarasan timing**:
+    - Worker monitoring: evaluasi tiap 30 detik.
+    - Web UI auto-refresh: fetch tiap 60 detik (dijauhkan agar tidak bentrok dengan worker write cycle).
+
+- **Verifikasi**:
+    - `php -l` pada semua file PHP yang diubah: passed.
+    - `php artisan test`: 2 passed (6 assertions).
+    - `php artisan route:list`: hanya `issue-logs.index` (GET) dan `api.issue-logs.index` (GET) tersisa untuk modul ini.
+
+## 2026-08-09
+
+### Perbaikan Bug : PrometheusService Simulation Mode Warning Flag
+
+- Menambahkan log warning saat PrometheusService diinisialisasi dengan PROMETHEUS_SIMULATION_MODE=true.
+    - File: `app/Services/PrometheusService.php`.
+    - Warning log di constructor: "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â PROMETHEUS SIMULATION MODE ACTIVE! Data yang digunakan adalah FAKE/SIMULASI, bukan data real dari Prometheus."
+    - Memberikan instruksi untuk disable: "Untuk menggunakan data real, set PROMETHEUS_SIMULATION_MODE=false di file .env"
+    - Tujuan: Agar admin/developer tidak salah interpretasi bahwa data adalah real padahal fake.
+
+- Menambahkan debug log saat simulation mode generate fake data.
+    - Method `getLatency()`: Log debug "Simulation mode: Generating fake latency {value}ms for {ip}"
+    - Method `getLatency()` error fallback: Log debug "Simulation mode (error fallback): Generating fake latency..."
+    - Method `getPacketLoss()`: Log debug "Simulation mode: Generating fake packet loss {value}% for {ip}"
+    - Method `getPacketLoss()` error fallback: Log debug "Simulation mode (error fallback): Generating fake packet loss..."
+    - Method `getAllMetricsBatch()`: Log warning "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Simulation mode: Generating fake metrics for batch query (X devices)"
+
+- Alasan perbaikan bug ini:
+    - Sebelumnya jika Prometheus server down, sistem otomatis switch ke simulation mode tanpa warning.
+    - User/admin bisa membuat keputusan berdasarkan data fake tanpa sadar (BERBAHAYA!).
+    - Dengan warning log yang jelas, admin akan segera tahu bahwa data bukan real.
+
+- Verifikasi:
+    - Syntax check passed: `php -l app/Services/PrometheusService.php`
+    - File encoding fixed (UTF-8 without BOM).
+
+- Impact:
+    - Risk: LOW (hanya menambah logging, tidak mengubah logic).
+    - Production safety: HIGH (mencegah decision making based on fake data).
+
+### Perbaikan Bug : Batch Query Prometheus - Empty Result Handling
+
+- Menambahkan handling untuk empty result pada batch query Prometheus.
+    - File: `app/Services/PrometheusService.php`.
+    - Method: `getAllMetricsBatch()`.
+- Penambahan warning log untuk setiap metric yang return empty:
+    - Bandwidth empty: "Prometheus batch query return EMPTY result for BANDWIDTH"
+    - Latency empty: "Prometheus batch query return EMPTY result for LATENCY"
+    - Packet Loss empty: "Prometheus batch query return EMPTY result for PACKET LOSS"
+    - Semua empty: "ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â CRITICAL: All Prometheus batch queries return EMPTY!"
+- Menambahkan possible causes di log untuk troubleshooting:
+    - Bandwidth empty: Devices not scraped yet, SNMP exporter down, Wrong metric name
+    - Latency empty: Blackbox exporter down, Targets not configured, Probe failed
+    - Packet Loss empty: Blackbox exporter down, probe_success metric not available
+- Menambahkan log error untuk HTTP status code yang tidak successful.
+    - Log status code untuk debugging (misal: 500, 503, 400)
+- Menambahkan detailed summary log setelah batch query:
+    - Format: "Prometheus batch summary: X/Y bandwidth, X/Y latency, X/Y packet_loss"
+    - Membantu admin monitoring berapa device yang berhasil/gagal di-query
+- Menambahkan stack trace pada exception untuk troubleshooting lebih mudah.
+
+- Alasan perbaikan bug ini:
+    - Sebelumnya jika Prometheus return empty result (misal: network hiccup), tidak ada log warning.
+    - Admin tidak tahu apakah query berhasil atau gagal.
+    - Forward chaining bisa false negative (tidak detect gangguan yang sebenarnya ada).
+    - Dengan warning log yang jelas, admin bisa segera troubleshoot masalah Prometheus.
+
+- Verifikasi:
+    - Syntax check passed: `php -l app/Services/PrometheusService.php`
+    - File encoding: UTF-8 without BOM
+
+- Impact:
+    - Risk: LOW (hanya menambah logging, tidak mengubah logic).
+    - Monitoring visibility: HIGH (admin tahu jika ada masalah di Prometheus).
+    - Troubleshooting: Lebih mudah dengan possible causes di log.
+
 # LOG Update Development
+
+### Perbaikan Bug : Rule Code Generation - Tidak Handle Delete
+
+- Memperbaiki logika auto-generate code rule di file `app/Models/Rule.php`.
+    - Sebelumnya: Code baru selalu memakai nomor terakhir + 1, sehingga jika rule R05 dihapus maka ada gap (R03, R04 tidak pernah dipakai) dan nomor terus naik.
+    - Sekarang: Code baru mengisi nomor terkecil yang BELUM dipakai (mengisi gap).
+        - Contoh: code terpakai R01, R02, R05 -> rule baru mendapat R03 (bukan R06).
+        - Contoh: semua rule dihapus -> rule baru mendapat R01 lagi.
+        - Contoh: code terpakai R01, R02, R03 -> rule baru mendapat R04 (urutan normal).
+
+- Cara kerja baru:
+    1. Ambil semua code rule yang terpakai (R01, R02, ...).
+    2. Ubah menjadi array angka [1, 2, ...].
+    3. Urutkan dari terkecil.
+    4. Cari nomor terkecil yang belum ada (isi gap).
+    5. Generate code dengan padding dinamis (R01, R10, R100, dst).
+
+- Tetap menggunakan `lockForUpdate()` untuk mencegah race condition ketika 2+ rule dibuat bersamaan.
+
+- Verifikasi:
+    - Syntax check passed: `php -l app/Models/Rule.php`
+    - Test logika dengan 7 skenario (semua PASS): DB kosong, urutan normal, gap tengah, R01 dihapus, gap besar, semua dihapus.
+    - File encoding: UTF-8 without BOM
+
+- Impact:
+    - Risk: LOW
+    - Benefit: Code rule selalu berurutan tanpa nomor yang hilang, user tidak bingung "kenapa R03 tidak ada".
+
+### Perbaikan Bug : SNMP Timeout Hardcoded di DeviceController
+
+- Mengubah timeout SNMP dari hardcoded 1 detik (1000000 mikrodetik) menjadi configurable via .env.
+    - File: `app/Http/Controllers/DeviceController.php` (method `pingDevice()`).
+    - Sebelumnya: `@snmpget($ip, $community, "1.3.6.1.2.1.1.1.0", 1000000)` (1 detik - terlalu cepat untuk device slow/jauh).
+    - Sekarang: `$snmpTimeout = env('SNMP_TIMEOUT_MICROSECONDS', 3000000)` (default 3 detik).
+    - `@snmpget($ip, $community, "1.3.6.1.2.1.1.1.0", $snmpTimeout)`.
+
+- Menambahkan variabel baru di `.env` dan `.env.example`.
+    - `SNMP_TIMEOUT_MICROSECONDS=3000000` (3 detik default).
+    - Disertai komentar penjelasan cara menggunakannya.
+
+- Alasan perbaikan:
+    - Timeout 1 detik terlalu cepat untuk perangkat jaringan yang lambat atau jauh.
+    - Bisa menghasilkan "SNMP Timeout" padahal perangkat sebenarnya online.
+    - Sekarang admin bisa menyesuaikan timeout sesuai kondisi jaringan tanpa mengubah kode.
+
+- Verifikasi:
+    - Syntax check passed: `php -l app/Http/Controllers/DeviceController.php`
+    - File encoding: UTF-8 without BOM
+
+- Impact:
+    - Risk: LOW
+    - Benefit: Koneksi Connect lebih toleran terhadap perangkat lambat/jauh; timeout bisa disetel dari .env tanpa edit kode.
+
+### Perbaikan Bug : Batch Query Prometheus - Empty Result Handling
+
+### Perbaikan Bug : No Monitoring untuk Worker Health
+
+- Menambahkan mekanisme HEARTBEAT untuk memantau kesehatan worker monitoring.
+    - File: `app/Console/Commands/MonitoringWorker.php`.
+    - Setiap cycle evaluasi (setiap 30 detik), worker meng-update cache `worker_last_heartbeat` dengan timestamp terbaru.
+    - Jika worker crash/macet diam-diam, heartbeat tidak ter-update lagi dan dashboard bisa mendeteksinya.
+
+- Menambahkan deteksi worker MATI/MACET di dashboard.
+    - File: `app/Http/Controllers/DashboardController.php` (method `index()`).
+    - Menghitung umur heartbeat (`heartbeatAge`) = selisih waktu sekarang dengan heartbeat terakhir.
+    - Worker dinyatakan SEHAT jika flag `monitoring_worker_running` = true DAN umur heartbeat <= 120 detik (2 menit).
+    - Jika flag running true tapi heartbeat sudah basi (> 2 menit), berarti worker crash/macet.
+
+- Menampilkan status kesehatan worker di view dashboard.
+    - File: `resources/views/dashboard/index.blade.php`.
+    - Badge worker baru:
+        - Hijau "Berjalan (Sehat)" - worker hidup dan heartbeat fresh.
+        - Merah tebal "MATI / MACET!" - worker crash/macet (heartbeat basi).
+        - Merah "Berhenti" - monitoring nonaktif.
+    - Menampilkan jam heartbeat terakhir dan peringatan jika worker mati.
+
+- Alasan perbaikan:
+    - Sebelumnya jika worker crash jam 2 pagi, admin tidak sadar sampai siang (10 jam downtime).
+    - Gangguan jaringan tidak terdeteksi selama worker mati.
+    - Sekarang dashboard menampilkan status kesehatan worker secara real-time.
+
+- Verifikasi:
+    - Syntax check passed untuk `MonitoringWorker.php` dan `DashboardController.php`.
+    - Blade template compile OK (`php artisan view:cache`).
+    - Test Laravel passed (2 tests).
+
+- Impact:
+    - Risk: LOW
+    - Benefit: Admin bisa langsung tahu jika worker mati/macet sehingga downtime monitoring bisa segera diatasi.
+- Menambahkan handling untuk empty result pada batch query Prometheus.
+    - File: `app/Services/PrometheusService.php`.
+    - Method: `getAllMetricsBatch()`.
+- Penambahan warning log untuk setiap metric yang return empty:
+    - Bandwidth empty: "Prometheus batch query return EMPTY result for BANDWIDTH"
+    - Latency empty: "Prometheus batch query return EMPTY result for LATENCY"
+    - Packet Loss empty: "Prometheus batch query return EMPTY result for PACKET LOSS"
+    - Semua empty: "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â CRITICAL: All Prometheus batch queries return EMPTY!"
+- Menambahkan possible causes di log untuk troubleshooting:
+    - Bandwidth empty: Devices not scraped yet, SNMP exporter down, Wrong metric name
+    - Latency empty: Blackbox exporter down, Targets not configured, Probe failed
+    - Packet Loss empty: Blackbox exporter down, probe_success metric not available
+- Menambahkan log error untuk HTTP status code yang tidak successful.
+    - Log status code untuk debugging (misal: 500, 503, 400)
+- Menambahkan detailed summary log setelah batch query:
+    - Format: "Prometheus batch summary: X/Y bandwidth, X/Y latency, X/Y packet_loss"
+    - Membantu admin monitoring berapa device yang berhasil/gagal di-query
+- Menambahkan stack trace pada exception untuk troubleshooting lebih mudah.
+
+- Alasan perbaikan bug ini:
+    - Sebelumnya jika Prometheus return empty result (misal: network hiccup), tidak ada log warning.
+    - Admin tidak tahu apakah query berhasil atau gagal.
+    - Forward chaining bisa false negative (tidak detect gangguan yang sebenarnya ada).
+    - Dengan warning log yang jelas, admin bisa segera troubleshoot masalah Prometheus.
+
+- Verifikasi:
+    - Syntax check passed: `php -l app/Services/PrometheusService.php`
+    - File encoding: UTF-8 without BOM
+
+- Impact:
+    - Risk: LOW (hanya menambah logging, tidak mengubah logic).
+    - Monitoring visibility: HIGH (admin tahu jika ada masalah di Prometheus).
+    - Troubleshooting: Lebih mudah dengan possible causes di log.
 
 ## 2026-07-24
 
@@ -170,9 +404,9 @@
 - Menambahkan `PROMETHEUS_SIMULATION_MODE=true` ke file `.env` untuk mode simulasi latency/packet loss.
 - Simulation mode dimatikan (`false`) setelah blackbox exporter berhasil terintegrasi.
 - Data yang didapatkan sekarang:
-    - ✅ Bandwidth: Real dari SNMP Exporter (`ifHCInOctets`).
-    - ✅ Latency: Real dari Blackbox Exporter (`probe_icmp_duration_seconds`).
-    - ✅ Packet Loss: Real dari Blackbox Exporter (`probe_success`).
+    - ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Bandwidth: Real dari SNMP Exporter (`ifHCInOctets`).
+    - ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Latency: Real dari Blackbox Exporter (`probe_icmp_duration_seconds`).
+    - ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Packet Loss: Real dari Blackbox Exporter (`probe_success`).
 
 ### Verifikasi dan Testing
 

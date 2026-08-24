@@ -7,171 +7,104 @@ use Illuminate\Support\Facades\Log;
 
 class PrometheusService
 {
-    /**
-     * Base URL Prometheus server
-     */
     private string $baseUrl;
-
-    /**
-     * Mode simulasi untuk testing (jika metric tidak tersedia)
-     */
     private bool $simulationMode;
 
-    /**
-     * Constructor
-     */
     public function __construct()
     {
         $this->baseUrl = env('PROMETHEUS_URL', 'http://localhost:9090');
         $this->simulationMode = env('PROMETHEUS_SIMULATION_MODE', false);
+
+        // Log warning jika simulation mode aktif
+        // Ini sangat penting agar admin tahu bahwa data adalah SIMULASI, bukan data real!
+        if ($this->simulationMode) {
+            Log::warning('Ã¢Å¡Â Ã¯Â¸Â PROMETHEUS SIMULATION MODE ACTIVE! Data yang digunakan adalah FAKE/SIMULASI, bukan data real dari Prometheus.');
+            Log::warning('Untuk menggunakan data real, set PROMETHEUS_SIMULATION_MODE=false di file .env');
+        }
     }
 
-    /**
-     * Query data bandwidth dari Prometheus menggunakan SNMP ifHCInOctets.
-     * 
-     * @param string $ipAddress IP target yang akan dicek
-     * @return float|null Bandwidth dalam Mbps, atau null jika gagal
-     */
     public function getBandwidth(string $ipAddress): ?float
     {
         try {
-            // Query bandwidth menggunakan ifHCInOctets (SNMP)
-            // rate() per 5 menit * 8 (bytes to bits) / 1000000 (bits to Mbps)
             $query = "rate(ifHCInOctets{instance=\"{$ipAddress}\"}[5m]) * 8 / 1000000";
-            
-            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", [
-                'query' => $query
-            ]);
-
+            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", ['query' => $query]);
             if ($response->successful()) {
                 $data = $response->json();
-                
                 if (isset($data['data']['result'][0]['value'][1])) {
                     return (float) $data['data']['result'][0]['value'][1];
                 }
             }
-
             return null;
         } catch (\Exception $e) {
-            Log::error("Failed to get bandwidth from Prometheus for {$ipAddress}: " . $e->getMessage());
+            Log::error("Failed to get bandwidth for {$ipAddress}: " . $e->getMessage());
             return null;
         }
     }
 
-    /**
-     * Query data latency dari Prometheus menggunakan Blackbox Exporter.
-     * Menggunakan probe_icmp_duration_seconds untuk ICMP ping latency.
-     * 
-     * @param string $ipAddress IP target yang akan dicek
-     * @return float|null Latency dalam ms, atau null jika gagal
-     */
     public function getLatency(string $ipAddress): ?float
     {
         try {
-            // Query latency dari blackbox exporter (ICMP probe)
-            // probe_icmp_duration_seconds dalam seconds, dikali 1000 untuk konversi ke ms
-            $query = "probe_icmp_duration_seconds{instance=\"{$ipAddress}\"} * 1000";
-            
-            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", [
-                'query' => $query
-            ]);
-
+            $query = "probe_icmp_duration_seconds{instance=\"{$ipAddress}\",phase=\"rtt\"} * 1000";
+            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", ['query' => $query]);
             if ($response->successful()) {
                 $data = $response->json();
-                
                 if (isset($data['data']['result'][0]['value'][1])) {
                     return (float) $data['data']['result'][0]['value'][1];
                 }
             }
-
-            // Fallback: coba probe_duration_seconds jika probe_icmp tidak ada
             $query = "probe_duration_seconds{instance=\"{$ipAddress}\"} * 1000";
-            
-            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", [
-                'query' => $query
-            ]);
-
+            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", ['query' => $query]);
             if ($response->successful()) {
                 $data = $response->json();
-                
                 if (isset($data['data']['result'][0]['value'][1])) {
                     return (float) $data['data']['result'][0]['value'][1];
                 }
             }
-
-            // Jika mode simulasi aktif dan metric tidak tersedia, return data dummy
             if ($this->simulationMode) {
-                $simulatedLatency = rand(10, 150) + (rand(0, 99) / 100);
-                Log::info("Simulation Mode: Generated latency {$simulatedLatency}ms for {$ipAddress}");
-                return $simulatedLatency;
+                $fakeLatency = rand(10, 150) + (rand(0, 99) / 100);
+                Log::debug("Simulation mode: Generating fake latency {$fakeLatency}ms for {$ipAddress}");
+                return $fakeLatency;
             }
-
             return null;
         } catch (\Exception $e) {
-            Log::error("Failed to get latency from Prometheus for {$ipAddress}: " . $e->getMessage());
-            
+            Log::error("Failed latency for {$ipAddress}: " . $e->getMessage());
             if ($this->simulationMode) {
-                $simulatedLatency = rand(10, 150) + (rand(0, 99) / 100);
-                return $simulatedLatency;
+                $fakeLatency = rand(10, 150) + (rand(0, 99) / 100);
+                Log::debug("Simulation mode (error fallback): Generating fake latency {$fakeLatency}ms for {$ipAddress}");
+                return $fakeLatency;
             }
-            
             return null;
         }
     }
 
-    /**
-     * Query data packet loss dari Prometheus menggunakan Blackbox Exporter.
-     * Menggunakan probe_success (1=UP, 0=DOWN).
-     * 
-     * @param string $ipAddress IP target yang akan dicek
-     * @return float|null Packet loss dalam %, atau null jika gagal
-     */
     public function getPacketLoss(string $ipAddress): ?float
     {
         try {
-            // Query packet loss dari blackbox exporter
-            // probe_success = 1 (UP/no loss), probe_success = 0 (DOWN/100% loss)
-            // (1 - probe_success) * 100 = packet loss percentage
             $query = "(1 - probe_success{instance=\"{$ipAddress}\"}) * 100";
-            
-            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", [
-                'query' => $query
-            ]);
-
+            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", ['query' => $query]);
             if ($response->successful()) {
                 $data = $response->json();
-                
                 if (isset($data['data']['result'][0]['value'][1])) {
                     return (float) $data['data']['result'][0]['value'][1];
                 }
             }
-
-            // Jika mode simulasi aktif dan metric tidak tersedia, return data dummy
             if ($this->simulationMode) {
-                $simulatedPacketLoss = rand(0, 10) + (rand(0, 99) / 100);
-                Log::info("Simulation Mode: Generated packet loss {$simulatedPacketLoss}% for {$ipAddress}");
-                return $simulatedPacketLoss;
+                $fakePacketLoss = rand(0, 10) + (rand(0, 99) / 100);
+                Log::debug("Simulation mode: Generating fake packet loss {$fakePacketLoss}% for {$ipAddress}");
+                return $fakePacketLoss;
             }
-
             return null;
         } catch (\Exception $e) {
-            Log::error("Failed to get packet loss from Prometheus for {$ipAddress}: " . $e->getMessage());
-            
+            Log::error("Failed packet loss for {$ipAddress}: " . $e->getMessage());
             if ($this->simulationMode) {
-                $simulatedPacketLoss = rand(0, 10) + (rand(0, 99) / 100);
-                return $simulatedPacketLoss;
+                $fakePacketLoss = rand(0, 10) + (rand(0, 99) / 100);
+                Log::debug("Simulation mode (error fallback): Generating fake packet loss {$fakePacketLoss}% for {$ipAddress}");
+                return $fakePacketLoss;
             }
-            
             return null;
         }
     }
 
-    /**
-     * Ambil semua metrik sekaligus untuk IP target tertentu.
-     * 
-     * @param string $ipAddress IP target yang akan dicek
-     * @return array Array dengan metrik: ['bandwidth' => float, 'latency' => float, 'packet_loss' => float]
-     */
     public function getAllMetrics(string $ipAddress): array
     {
         return [
@@ -182,10 +115,74 @@ class PrometheusService
     }
 
     /**
-     * Cek apakah Prometheus server dapat dijangkau.
+     * Ambil metrik untuk BANYAK IP dalam 1 batch query Prometheus.
+     * Hanya 3 query (bandwidth, latency, packet_loss) untuk semua device.
      * 
-     * @return bool True jika Prometheus server UP, false jika DOWN
+     * @param array $ipAddresses Daftar IP
+     * @return array ['ip' => ['bandwidth'=>null|float, 'latency'=>null|float, 'packet_loss'=>null|float]]
      */
+    public function getAllMetricsBatch(array $ipAddresses): array
+    {
+        if (empty($ipAddresses)) return [];
+
+        $results = [];
+        foreach ($ipAddresses as $ip) {
+            $results[$ip] = ['bandwidth' => null, 'latency' => null, 'packet_loss' => null];
+        }
+
+        // Regex pattern: instance=~"ip1|ip2|ip3"
+        // Dot (.) di regex match karakter apapun, termasuk literal dot Ã¢â‚¬â€œ jadi tidak perlu escape
+        $pattern = implode('|', $ipAddresses);
+
+        try {
+            // 1. BANDWIDTH batch Ã¢â‚¬â€œ sum by instance untuk total semua interface per device
+            $q = "sum by (instance) (rate(ifHCInOctets{instance=~\"{$pattern}\"}[5m])) * 8 / 1000000";
+            $r = Http::timeout(8)->get("{$this->baseUrl}/api/v1/query", ['query' => $q]);
+            if ($r->successful()) {
+                foreach ($r->json()['data']['result'] ?? [] as $res) {
+                    $ip = $res['metric']['instance'] ?? null;
+                    if ($ip && isset($results[$ip])) $results[$ip]['bandwidth'] = (float) ($res['value'][1] ?? 0);
+                }
+            }
+
+            // 2. LATENCY batch Ã¢â‚¬â€œ phase rtt untuk ICMP ping
+            $q = "probe_icmp_duration_seconds{instance=~\"{$pattern}\",phase=\"rtt\"} * 1000";
+            $r = Http::timeout(8)->get("{$this->baseUrl}/api/v1/query", ['query' => $q]);
+            if ($r->successful()) {
+                foreach ($r->json()['data']['result'] ?? [] as $res) {
+                    $ip = $res['metric']['instance'] ?? null;
+                    if ($ip && isset($results[$ip])) $results[$ip]['latency'] = (float) ($res['value'][1] ?? 0);
+                }
+            }
+
+            // 3. PACKET LOSS batch
+            $q = "(1 - probe_success{instance=~\"{$pattern}\"}) * 100";
+            $r = Http::timeout(8)->get("{$this->baseUrl}/api/v1/query", ['query' => $q]);
+            if ($r->successful()) {
+                foreach ($r->json()['data']['result'] ?? [] as $res) {
+                    $ip = $res['metric']['instance'] ?? null;
+                    if ($ip && isset($results[$ip])) $results[$ip]['packet_loss'] = (float) ($res['value'][1] ?? 0);
+                }
+            }
+
+            // 4. Simulation mode fallback
+            if ($this->simulationMode) {
+                Log::warning("Ã¢Å¡Â Ã¯Â¸Â Simulation mode: Generating fake metrics for batch query (" . count($results) . " devices)");
+                foreach ($results as $ip => $m) {
+                    if ($m['bandwidth'] === null) $results[$ip]['bandwidth'] = rand(0, 100) + (rand(0, 99) / 100);
+                    if ($m['latency'] === null) $results[$ip]['latency'] = rand(10, 150) + (rand(0, 99) / 100);
+                    if ($m['packet_loss'] === null) $results[$ip]['packet_loss'] = rand(0, 5) + (rand(0, 99) / 100);
+                }
+            }
+
+            Log::info("Prometheus batch: " . count($results) . " devices, " . count(array_filter(array_column($results, 'bandwidth'), fn($v) => $v !== null)) . " have bandwidth");
+        } catch (\Exception $e) {
+            Log::error("Batch query Prometheus failed: " . $e->getMessage());
+        }
+
+        return $results;
+    }
+
     public function checkConnection(): bool
     {
         try {

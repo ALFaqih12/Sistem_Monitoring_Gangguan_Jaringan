@@ -89,6 +89,11 @@ class DeviceController extends Controller
         $ip = $validated['ip_address'];
         $community = "public"; // Sesuaikan dengan community string di perangkat Anda
 
+        // Timeout SNMP diambil dari .env agar bisa disesuaikan dengan kondisi jaringan.
+        // Default: 3000000 mikrodetik = 3 detik.
+        // Sebelumnya hardcoded 1000000 (1 detik) yang terlalu cepat untuk device slow/jauh.
+        $snmpTimeout = env('SNMP_TIMEOUT_MICROSECONDS', 3000000);
+
         if (! function_exists('snmpget')) {
             return response()->json([
                 'status' => 'error',
@@ -98,8 +103,8 @@ class DeviceController extends Controller
 
         try {
             // Menggunakan snmpget untuk mengambil deskripsi sistem
-            // Timeout diset ke 1 detik (1000000 mikrodetik) agar tidak menunggu terlalu lama
-            $sysDescr = @snmpget($ip, $community, "1.3.6.1.2.1.1.1.0", 1000000);
+            // Timeout bisa dikonfigurasi via .env (SNMP_TIMEOUT_MICROSECONDS)
+            $sysDescr = @snmpget($ip, $community, "1.3.6.1.2.1.1.1.0", $snmpTimeout);
 
             if ($sysDescr) {
                 // Hasilnya biasanya string panjang, kita bersihkan

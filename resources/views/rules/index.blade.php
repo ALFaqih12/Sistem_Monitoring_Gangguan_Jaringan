@@ -7,7 +7,7 @@
     /* CSS Khusus Table Rules */
     h2 { margin-bottom: 20px; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
     .btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; }
-    .btn-primary { background-color: #3498db; color: white; }
+    .btn-primary { background-color: #3498db; color: white; text-decoration: none;}
     .btn-primary:hover { background-color: #2980b9; }
     
     .table-panel { background: white; padding: 22px; border-radius: 6px; box-shadow: 0 6px 18px rgba(44,62,80,0.08); margin-top: 20px; border: 1px solid #e8edf3; }
@@ -27,6 +27,7 @@
     
     .badge-code { display: inline-block; padding: 5px 10px; border-radius: 4px; font-size: 13px; background-color: #3498db; color: white; font-weight: 700; font-family: 'Courier New', monospace; }
     .badge-target { display: inline-block; padding: 5px 9px; border-radius: 999px; font-size: 12px; background-color: #eef5fb; color: #2c3e50; border: 1px solid #d7e7f5; }
+    .badge-target-warning { display: inline-block; padding: 5px 9px; border-radius: 999px; font-size: 12px; background-color: #fdecea; color: #922b21; border: 1px solid #f5c6cb; font-weight: 600; }
     
     .btn-warning { background-color: #f1c40f; color: #333; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-width: 64px; padding: 7px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; }
     .btn-warning:hover { background-color: #f39c12; }
@@ -127,8 +128,10 @@
                             <td>
                                 @if($rule->target_type === 'all')
                                     <span class="badge-target">All Devices</span>
+                                @elseif($rule->targetDevice)
+                                    <span class="badge-target">{{ $rule->targetDevice->ip_address }}</span>
                                 @else
-                                    <span class="badge-target">{{ $rule->targetDevice->ip_address ?? '-' }}</span>
+                                    <span class="badge-target-warning">⚠ Device telah dihapus</span>
                                 @endif
                             </td>
                             <td>
@@ -268,3 +271,4 @@
     });
 </script>
 @endpush
+

@@ -30,23 +30,30 @@ class Rule extends Model
         parent::boot();
 
         static::creating(function ($model) {
-            // Gunakan lockForUpdate() untuk mencegah race condition
-            // ketika dua user membuat rule secara bersamaan
-            $latest = self::where('code', 'like', 'R%')
-                ->lockForUpdate()
-                ->latest('id')
-                ->first();
-            
-            if ($latest) {
-                // Jika sudah ada data, ambil nomor terakhir lalu tambah 1
-                $number = (int) substr($latest->code, 1) + 1;
-                // Padding dinamis: jika angka < 10 -> 2 digit, jika > 99 -> 3 digit, dst
-                $padding = max(2, strlen((string) $number));
-                $model->code = 'R' . str_pad($number, $padding, '0', STR_PAD_LEFT);
-            } else {
-                // Jika belum ada data, mulai dari R01
-                $model->code = 'R01';
+            // Ambil semua nomor code yang sudah terpakai (misal: R01,R02,R05 -> [1,2,5])
+            $existingNumbers = self::where('code', 'like', 'R%')
+                ->lockForUpdate() // Mencegah race condition saat 2+ rule dibuat bersamaan
+                ->pluck('code')
+                ->map(function ($code) {
+                    return (int) substr($code, 1); // Ambil angka setelah huruf "R"
+                })
+                ->sort()
+                ->values();
+
+            // Cari nomor terkecil yang BELUM dipakai (isi gap akibat rule yang dihapus)
+            // Contoh: code terpakai [1,2,5] -> nomor 3 belum dipakai -> rule baru dapat R03
+            $number = 1;
+            foreach ($existingNumbers as $existing) {
+                if ($existing === $number) {
+                    $number++;
+                } else {
+                    break; // Ada gap, nomor ini yang akan dipakai
+                }
             }
+
+            // Padding dinamis: jika angka < 10 -> 2 digit, jika > 99 -> 3 digit, dst
+            $padding = max(2, strlen((string) $number));
+            $model->code = 'R' . str_pad($number, $padding, '0', STR_PAD_LEFT);
         });
     }
 

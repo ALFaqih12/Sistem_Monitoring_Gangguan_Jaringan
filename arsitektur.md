@@ -17,8 +17,7 @@ Dokumen ini berfungsi sebagai panduan teknis dan konseptual bagi AI Agent dalam 
 
 ### A. Autentikasi
 
-- **User Login**: Pengguna utama sistem adalah **admin dari penyedia layanan WIFI**. Admin melakukan login ke portal web berbasis Laravel untuk mengakses _dashboard_ manajemen.
-- **Manajemen Akun User**: Jika di kemudian hari ada penambahan user, akun tersebut dibuatkan oleh admin utama. Karena itu, modul registrasi mandiri tidak menjadi kebutuhan utama pada alur sistem.
+- **User Login**: Pengguna utama sistem ini hanya untuk di peruntukan 1 user saja yaitu adalah **admin dari penyedia layanan WIFI**. Admin melakukan login ke portal web berbasis Laravel untuk mengakses _dashboard_ manajemen.
 
 ### B. Manajemen Target Device
 

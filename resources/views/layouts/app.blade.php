@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Siwa Network - Sistem Pakar & Monitoring</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    
+
     <style>
         * {
             box-sizing: border-box;
@@ -80,7 +80,7 @@
             opacity: 1;
         }
     </style>
-    
+
     <!-- Tempat untuk menyisipkan CSS khusus per-modul (jika ada) -->
     @stack('styles')
 </head>
@@ -94,6 +94,11 @@
         </div>
         <ul class="sidebar-menu">
             <li>
+                <a href="{{ route('dashboard.index') }}" class="{{ request()->routeIs('dashboard.*') ? 'active' : '' }}">
+                    Dashboard
+                </a>
+            </li>
+            <li>
                 <a href="{{ route('devices.index') }}" class="{{ request()->routeIs('devices.*') ? 'active' : '' }}">
                     Manajemen Target Device
                 </a>
@@ -103,8 +108,12 @@
                     Rule Forward Chaining
                 </a>
             </li>
+            <li>
+                <a href="{{ route('issue-logs.index') }}" class="{{ request()->routeIs('issue-logs.*') ? 'active' : '' }}">
+                    Log Gangguan
+                </a>
+            </li>
             <!-- Menu modul selanjutnya akan kita tambahkan di sini nanti -->
-            <!-- <li><a href="#">Log Gangguan</a></li> -->
             <!-- <li><a href="#">Manajemen Alert</a></li> -->
         </ul>
     </div>
