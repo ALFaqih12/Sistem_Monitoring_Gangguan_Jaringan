@@ -22,14 +22,23 @@ class RuleCondition extends Model
         'value' => 'decimal:2',
     ];
 
-    // 3. Relasi ke tabel rules (belongsTo)
+    // 3. Append accessor ke JSON response agar Vue bisa akses unit dan parameter_label.
+    // Tanpa $appends, accessor hanya tersedia di PHP, tidak di-serialize ke JSON.
+    // Bug fix: kondisi rule di halaman list tidak menampilkan unit (ms, Mbps, %)
+    // karena accessor tidak ter-include dalam Inertia response.
+    protected $appends = [
+        'unit',
+        'parameter_label',
+    ];
+
+    // 4. Relasi ke tabel rules (belongsTo)
     // Setiap kondisi hanya dimiliki oleh satu rule
     public function rule()
     {
         return $this->belongsTo(Rule::class);
     }
 
-    // 4. Accessor untuk mendapatkan satuan parameter
+    // 5. Accessor untuk mendapatkan satuan parameter
     // Satuan akan digunakan di form dan tampilan (mbps, ms, %)
     public function getUnitAttribute(): string
     {
@@ -41,7 +50,7 @@ class RuleCondition extends Model
         };
     }
 
-    // 5. Accessor untuk mendapatkan label parameter yang user-friendly
+    // 6. Accessor untuk mendapatkan label parameter yang user-friendly
     public function getParameterLabelAttribute(): string
     {
         return match($this->parameter) {

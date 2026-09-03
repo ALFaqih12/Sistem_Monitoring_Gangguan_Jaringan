@@ -24,23 +24,23 @@ class CreateTestData extends Command
      */
     public function handle(): int
     {
-        $this->info('🔧 Membuat Data Dummy untuk Testing...');
+        $this->info('[SETUP] Membuat Data Dummy untuk Testing...');
         $this->newLine();
 
         // Cek apakah sudah ada device
         $device = Device::first();
 
         if (!$device) {
-            $this->warn('⚠️  Tidak ada device di database.');
-            $this->info('💡 Silakan tambahkan device melalui Web UI: http://localhost:8000/devices');
+            $this->warn('[WARN] Tidak ada device di database.');
+            $this->info('[TIPS] Silakan tambahkan device melalui Web UI: http://localhost:8000/devices');
             return Command::FAILURE;
         }
 
-        $this->info("✅ Device ditemukan: {$device->ip_address} - {$device->customer_name}");
+        $this->info("[OK] Device ditemukan: {$device->ip_address} - {$device->customer_name}");
         $this->newLine();
 
         // Buat 3 rule testing dengan kondisi berbeda
-        $this->info('📝 Membuat Rule Testing...');
+        $this->info('[CREATE] Membuat Rule Testing...');
 
         // Rule 1: Latency Tinggi
         $rule1 = Rule::create([
@@ -56,7 +56,7 @@ class CreateTestData extends Command
             'value' => 50
         ]);
 
-        $this->line("  ✅ {$rule1->code}: {$rule1->name}");
+        $this->line("  [OK] {$rule1->code}: {$rule1->name}");
         $this->line("     Kondisi: IF latency > 50 ms THEN gangguan");
 
         // Rule 2: Packet Loss Tinggi
@@ -73,7 +73,7 @@ class CreateTestData extends Command
             'value' => 5
         ]);
 
-        $this->line("  ✅ {$rule2->code}: {$rule2->name}");
+        $this->line("  [OK] {$rule2->code}: {$rule2->name}");
         $this->line("     Kondisi: IF packet_loss > 5 % THEN gangguan");
 
         // Rule 3: Gangguan Kompleks (Multiple Conditions)
@@ -97,13 +97,13 @@ class CreateTestData extends Command
             'value' => 2
         ]);
 
-        $this->line("  ✅ {$rule3->code}: {$rule3->name}");
+        $this->line("  [OK] {$rule3->code}: {$rule3->name}");
         $this->line("     Kondisi: IF latency > 100 ms AND packet_loss > 2 % THEN gangguan");
 
         $this->newLine();
-        $this->info('✅ Data dummy berhasil dibuat!');
+        $this->info('[OK] Data dummy berhasil dibuat!');
         $this->newLine();
-        $this->info('🧪 Sekarang Anda bisa test evaluasi dengan command:');
+        $this->info('[TEST] Sekarang Anda bisa test evaluasi dengan command:');
         $this->line('   php artisan rules:evaluate');
 
         return Command::SUCCESS;

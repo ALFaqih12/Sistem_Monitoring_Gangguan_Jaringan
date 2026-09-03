@@ -25,8 +25,8 @@ class ShowPrometheusMetrics extends Command
         $ip = $this->argument('ip');
         $prometheusUrl = env('PROMETHEUS_URL', 'http://localhost:9090');
 
-        $this->info("🔍 Mencari metrics untuk IP: {$ip}");
-        $this->info("📍 Prometheus URL: {$prometheusUrl}");
+        $this->info("[INFO] Mencari metrics untuk IP: {$ip}");
+        $this->info("[LOC] Prometheus URL: {$prometheusUrl}");
         $this->newLine();
 
         try {
@@ -38,7 +38,7 @@ class ShowPrometheusMetrics extends Command
             ]);
 
             if (!$response->successful()) {
-                $this->error('❌ Gagal query Prometheus API');
+                $this->error('[ERROR] Gagal query Prometheus API');
                 return Command::FAILURE;
             }
 
@@ -46,16 +46,16 @@ class ShowPrometheusMetrics extends Command
             $series = $data['data'] ?? [];
 
             if (empty($series)) {
-                $this->warn("⚠️  Tidak ada metrics ditemukan untuk IP: {$ip}");
+                $this->warn("[WARN] Tidak ada metrics ditemukan untuk IP: {$ip}");
                 $this->newLine();
-                $this->info('💡 Kemungkinan:');
+                $this->info('[TIPS] Kemungkinan:');
                 $this->line('  1. IP belum terdaftar sebagai target di Prometheus');
                 $this->line('  2. Format label instance berbeda (coba tambah port, misal: 192.168.18.200:161)');
                 $this->line('  3. Target belum berhasil di-scrape');
                 return Command::FAILURE;
             }
 
-            $this->info("✅ Ditemukan " . count($series) . " metrics untuk IP ini");
+            $this->info("[OK] Ditemukan " . count($series) . " metrics untuk IP ini");
             $this->newLine();
 
             // Kelompokkan metrics berdasarkan nama metric
@@ -70,12 +70,12 @@ class ShowPrometheusMetrics extends Command
                 $metricsByName[$metricName][] = $serie;
             }
 
-            $this->info("📊 Daftar Metrics yang Tersedia:");
+            $this->info("[DATA] Daftar Metrics yang Tersedia:");
             $this->line(str_repeat('=', 80));
 
             foreach ($metricsByName as $metricName => $metrics) {
                 $this->line("");
-                $this->line("📌 Metric: {$metricName}");
+                $this->line("[LOC] Metric: {$metricName}");
                 
                 // Tampilkan beberapa contoh label
                 $sampleMetric = $metrics[0];
@@ -97,7 +97,7 @@ class ShowPrometheusMetrics extends Command
             $this->newLine();
 
             // Rekomendasi berdasarkan metric yang ditemukan
-            $this->info("💡 Rekomendasi Query untuk PrometheusService.php:");
+            $this->info("[TIPS] Rekomendasi Query untuk PrometheusService.php:");
             $this->newLine();
 
             $this->suggestQueries($metricsByName);
@@ -105,7 +105,7 @@ class ShowPrometheusMetrics extends Command
             return Command::SUCCESS;
 
         } catch (\Exception $e) {
-            $this->error('❌ Error: ' . $e->getMessage());
+            $this->error('[ERROR] Error: ' . $e->getMessage());
             return Command::FAILURE;
         }
     }
@@ -151,9 +151,9 @@ class ShowPrometheusMetrics extends Command
         });
 
         if (!empty($bandwidthMetrics)) {
-            $this->line("📶 BANDWIDTH - Metric yang bisa digunakan:");
+            $this->line("[SIGNAL] BANDWIDTH - Metric yang bisa digunakan:");
             foreach ($bandwidthMetrics as $metric) {
-                $this->line("   • {$metric}");
+                $this->line("   *  {$metric}");
                 $this->line("     Query: rate({$metric}{instance=\"{{ipAddress}}\"}[5m]) * 8 / 1000000");
             }
             $this->newLine();
@@ -168,9 +168,9 @@ class ShowPrometheusMetrics extends Command
         });
 
         if (!empty($latencyMetrics)) {
-            $this->line("⏱️  LATENCY - Metric yang bisa digunakan:");
+            $this->line("[TIME] LATENCY - Metric yang bisa digunakan:");
             foreach ($latencyMetrics as $metric) {
-                $this->line("   • {$metric}");
+                $this->line("   *  {$metric}");
                 $this->line("     Query: {$metric}{instance=\"{{ipAddress}}\"} * 1000");
             }
             $this->newLine();
@@ -185,9 +185,9 @@ class ShowPrometheusMetrics extends Command
         });
 
         if (!empty($packetLossMetrics)) {
-            $this->line("📉 PACKET LOSS - Metric yang bisa digunakan:");
+            $this->line("[GRAPH]  PACKET LOSS - Metric yang bisa digunakan:");
             foreach ($packetLossMetrics as $metric) {
-                $this->line("   • {$metric}");
+                $this->line("   *  {$metric}");
                 if (stripos($metric, 'success') !== false) {
                     $this->line("     Query: (1 - {$metric}{instance=\"{{ipAddress}}\"}) * 100");
                 } else {
@@ -198,7 +198,7 @@ class ShowPrometheusMetrics extends Command
         }
 
         if (empty($bandwidthMetrics) && empty($latencyMetrics) && empty($packetLossMetrics)) {
-            $this->warn("⚠️  Tidak ditemukan metric yang umum untuk bandwidth/latency/packet loss");
+            $this->warn("[WARN] Tidak ditemukan metric yang umum untuk bandwidth/latency/packet loss");
             $this->line("   Anda mungkin perlu menyesuaikan query secara manual");
         }
     }

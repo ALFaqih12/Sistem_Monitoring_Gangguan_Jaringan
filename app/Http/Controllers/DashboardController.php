@@ -7,6 +7,7 @@ use App\Models\Rule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
@@ -35,7 +36,10 @@ class DashboardController extends Controller
         //   dan dashboard harus memberi peringatan agar admin segera mengecek.
         $workerHealthy = $workerRunning && $heartbeatAge <= 120;
 
-        return view('dashboard.index', compact(
+        // Migrasi Blade -> Inertia: halaman kini dirender lewat Vue Dashboard/Index.vue.
+        // Data (props) dikirim persis sama — hanya engine presentasi yang berganti
+        // dari Blade ke Inertia render. Logika backend (DB/cache query) tidak berubah.
+        return Inertia::render('Dashboard/Index', compact(
             'totalDevices',
             'totalRules',
             'monitoringActive',

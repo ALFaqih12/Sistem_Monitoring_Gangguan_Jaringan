@@ -1,3 +1,588 @@
+## 2026-09-01 (Update #5)
+
+### PERBAIKAN ISSUE #5 (Lanjutan): Validasi Duplicate Parameters pada Kondisi Rule
+
+#### Deskripsi Issue
+- Pada modul Rule Forward Chaining, user bisa menambahkan 2+ kondisi dengan parameter yang **SAMAKI** dalam 1 rule.
+- Contoh: 2 kondisi dengan parameter `bandwidth` (misal: `> 100` dan `< 50`) - ini redundancy/confusion.
+- Requirement: Setiap parameter hanya boleh muncul maksimal 1 kali dalam 1 rule.
+- Note: Berbeda rule dengan parameter yang sama di-bolehkan (misal: R01 punya bandwidth, R02 punya bandwidth).
+
+#### Root Cause
+- Tidak ada validasi untuk mencegah duplicate parameters dalam 1 rule.
+- Form Vue hanya mencegah duplicate parameter melalui UI (dropdown bisa dipilih berulang).
+
+#### File yang Diperbaiki
+1. **app/Http/Controllers/RuleController.php**
+   - Tambah method `validateDuplicateParameters()` (private)
+   - Tambah validasi di `store()` method
+   - Tambah validasi di `update()` method
+
+#### Perubahan Teknis
+
+**Method baru: `validateDuplicateParameters(array $conditions): ?array`**
+- Group conditions by parameter dan count occurrences
+- Jika ada parameter dengan count > 1 → return error message
+- Example error message: "Setiap parameter hanya boleh muncul maksimal 1 kali dalam rule yang sama. Parameter berulang: Bandwidth (2x)"
+
+**Integrasi di `store()` method (setelah validasi Laravel):**
+```php
+// Validasi duplicate parameters (hanya boleh 1 kondisi per parameter)
+$duplicateError = $this->validateDuplicateParameters($validated['conditions']);
+if ($duplicateError) {
+    return back()->withErrors($duplicateError)->withInput();
+}
+```
+
+**Integrasi di `update()` method (setelah validasi Laravel):**
+- Identik dengan store() - sama logic
+
+#### Validation Flow (Setelah Fix)
+
+**Backend Validation Order:**
+1. Laravel Request Validation (required, enum, numeric, exists, dll)
+2. Duplicate Parameters Validation (baru!)
+3. Logical Contradiction Validation (sudah ada dari Update #4)
+4. Database Transaction (save rule + conditions)
+
+**Frontend UX:**
+- User tidak bisa submit form dengan duplicate parameters
+- Error message muncul di atas form: "Setiap parameter hanya boleh muncul maksimal 1 kali..."
+- Form otomatis tetap terbuka dengan data yang sudah diisi (via `->withInput()`)
+
+#### Contoh Validasi
+
+**✅ VALID** (setiap parameter 1x):
+```
+Kondisi 1: bandwidth > 100 Mbps
+Kondisi 2: latency > 50 ms
+Kondisi 3: packet_loss > 5 %
+→ ACCEPTED (3 parameter berbeda)
+```
+
+**✅ VALID** (1 parameter):
+```
+Kondisi 1: latency > 50 ms
+→ ACCEPTED (hanya 1 kondisi)
+```
+
+**❌ INVALID** (duplicate parameter):
+```
+Kondisi 1: bandwidth > 100 Mbps
+Kondisi 2: bandwidth < 50 Mbps
+→ REJECTED: "Parameter berulang: Bandwidth (2x)"
+```
+
+**❌ INVALID** (triple duplicate):
+```
+Kondisi 1: packet_loss = 5 %
+Kondisi 2: packet_loss > 3 %
+Kondisi 3: packet_loss > 10 %
+→ REJECTED: "Parameter berulang: Packet Loss (3x)"
+```
+
+#### Verifikasi
+| Check | Hasil |
+|-------|-------|
+| `php -l` (RuleController.php) | ✅ No syntax errors |
+| `php artisan test` | ✅ 2 passed (11 assertions), no regression |
+| Form Create - Duplicate Parameter | ✅ Error message muncul |
+| Form Edit - Duplicate Parameter | ✅ Error message muncul |
+| Form Create - No Duplicate | ✅ Rule berhasil disimpan |
+| Form Edit - No Duplicate | ✅ Rule berhasil diupdate |
+
+#### Impact
+- Risk: **LOW** (hanya tambah validation, tidak ubah logic existing)
+- Data Integrity: **HIGH** (prevent duplicate parameters)
+- UX: **HIGH** (informative error message, form tetap terbuka)
+- Performance: **MINIMAL** (O(n) scan, negligible)
+- Breaking Changes: **NONE** (rules existing yang sudah punya duplicate tidak terpengaruh, hanya validasi pada create/edit baru)
+
+#### Testing Manual
+
+**Test Case 1: Duplicate Parameter Rejection**
+```
+Steps:
+1. Buka /rules/create
+2. Nama Rule: Test Duplicate Parameter
+3. Target Device: All Devices
+4. Kondisi 1: Parameter = bandwidth, Operator = >, Value = 100
+5. Klik "+ Tambah Kondisi"
+6. Kondisi 2: Parameter = bandwidth, Operator = <, Value = 50
+7. Klik "Simpan Rule"
+
+Expected:
+❌ Error message: "Setiap parameter hanya boleh muncul maksimal 1 kali dalam rule yang sama. Parameter berulang: Bandwidth (2x)"
+```
+
+**Test Case 2: No Duplicate Acceptance**
+```
+Steps:
+1. Buka /rules/create
+2. Nama Rule: Test No Duplicate
+3. Target Device: All Devices
+4. Kondisi 1: Parameter = bandwidth, Operator = >, Value = 100
+5. Klik "+ Tambah Kondisi"
+6. Kondisi 2: Parameter = latency, Operator = >, Value = 50
+7. Klik "Simpan Rule"
+
+Expected:
+✅ Rule berhasil disimpan
+✅ Muncul di halaman list dengan 2 kondisi
+```
+
+#### Catatan Tambahan
+- Duplicate parameter validation diimplementasikan **SEBELUM** logical contradiction validation.
+- Urutan validasi: Laravel validation → Duplicate check → Contradiction check → Save.
+- Error message menggunakan parameter label yang user-friendly (Bandwidth, Latency, Packet Loss).
+- Existing rules di database yang sudah punya duplicate parameters tidak akan divalidasi ulang (hanya validasi pada create/edit baru).
+
+---
+
+## 2026-09-01 (Update #4)
+
+### PERBAIKAN ISSUE #5: Rule Forward Chaining - Validasi Logical Contradiction pada Kondisi
+
+#### Deskripsi Issue
+- User bisa membuat kondisi rule yang **bertentangan secara logika**, sehingga rule **TIDAK AKAN PERNAH MATCH**.
+- Contoh contradiction:
+  - `bandwidth > 100 Mbps AND bandwidth < 50 Mbps` (tidak ada nilai yang satisfy kedua kondisi)
+  - `latency = 50 ms AND latency > 50 ms` (nilai tidak bisa equal dan greater bersamaan)
+  - `packet_loss = 5% AND packet_loss = 10%` (tidak bisa 5 dan 10 bersamaan)
+- Dampak: Rule dibuat user tapi tidak pernah trigger, user bingung kenapa rule tidak bekerja, resource terbuang sia-sia.
+
+#### Root Cause
+- Tidak ada validasi saat create/edit rule untuk mendeteksi logical contradiction pada kondisi.
+- Backend hanya validasi basic (required, enum values, numeric), tidak ada business logic validation.
+- User bisa submit form dengan kondisi yang impossible secara logika.
+
+#### File yang Diperbaiki
+1. **app/Http/Controllers/RuleController.php** (tambah 2 private methods + validasi di store & update)
+
+#### Perubahan Teknis
+
+**Tambah 2 Helper Methods:**
+
+**Method 1: `validateLogicalContradiction(array $conditions): ?array`**
+- Group conditions by parameter
+- Check setiap kombinasi kondisi pada parameter yang sama
+- Return error message jika ditemukan contradiction, null jika valid
+- ~50 lines, well-documented
+
+**Method 2: `checkContradiction(array $cond1, array $cond2, string $parameter): ?string`**
+- Implementasi 4 rule deteksi contradiction:
+  1. **Opposite Range**: `> A AND < B` (hanya valid jika A < B)
+  2. **Equality dengan Greater**: `= A AND > B` (hanya valid jika A > B)
+  3. **Equality dengan Less**: `= A AND < B` (hanya valid jika A < B)
+  4. **Multiple Equality**: `= A AND = B` (hanya valid jika A == B)
+- Error message yang informatif dengan unit dan parameter label
+- ~100 lines, well-commented
+
+**Validasi di method `store()` (baris ~182):**
+```php
+$contradictionError = $this->validateLogicalContradiction($validated['conditions']);
+if ($contradictionError) {
+    return back()->withErrors($contradictionError)->withInput();
+}
+```
+
+**Validasi di method `update()` (baris ~267):**
+```php
+$contradictionError = $this->validateLogicalContradiction($validated['conditions']);
+if ($contradictionError) {
+    return back()->withErrors($contradictionError)->withInput();
+}
+```
+
+#### Deteksi Contradiction Matrix
+
+| Operator 1 | Operator 2 | Valid? | Keterangan |
+|------------|------------|--------|------------|
+| `>` | `<` | ⚠️ DEPENDS | Valid jika val1 < val2 (range check) |
+| `=` | `>` | ❌ INVALID | Val tidak bisa equal dan greater |
+| `=` | `<` | ❌ INVALID | Val tidak bisa equal dan less |
+| `=` | `=` | ⚠️ DEPENDS | Valid hanya jika value sama |
+| `>` | `>` | ✅ VALID | Redundant tapi valid |
+| `<` | `<` | ✅ VALID | Redundant tapi valid |
+
+#### Contoh Error Message
+
+**Saat user buat rule dengan contradiction:**
+```
+Input:
+- Kondisi 1: bandwidth > 100 Mbps
+- Kondisi 2: bandwidth < 50 Mbps
+
+Error yang ditampilkan:
+"Kondisi bertentangan pada Bandwidth: tidak mungkin > 100 Mbps DAN < 50 Mbps secara bersamaan."
+```
+
+#### Display Comparison
+
+**Sebelum Fix:**
+```
+User buat rule dengan: bandwidth > 100 AND bandwidth < 50
+✅ Form submit berhasil (tidak ada warning)
+❌ Rule tersimpan ke DB tapi tidak akan pernah match
+❌ User bingung kenapa rule tidak bekerja
+```
+
+**Sesudah Fix:**
+```
+User buat rule dengan: bandwidth > 100 AND bandwidth < 50
+❌ Form submit REJECTED dengan error message
+✅ User tahu ada logical contradiction pada kondisi
+✅ User harus fix kondisi sebelum bisa simpan
+✅ Hanya kondisi yang valid yang tersimpan ke DB
+```
+
+#### Verifikasi
+| Check | Hasil |
+|-------|-------|
+| `php -l` (RuleController.php) | ✅ No syntax errors |
+| `php artisan test` | ✅ 2 passed (11 assertions), no regression |
+| Test Case: Opposite Range Contradiction | ✅ bandwidth > 100 AND < 50 → ERROR |
+| Test Case: Valid Range | ✅ bandwidth > 50 AND < 100 → OK |
+| Test Case: Equality with Greater | ✅ latency = 50 AND > 50 → ERROR |
+| Test Case: Different Equality | ✅ packet_loss = 5 AND = 10 → ERROR |
+| Test Case: Different Parameters | ✅ bandwidth > 100 AND latency > 50 → OK |
+| Test Case: Boundary Values | ✅ bandwidth >= 100 AND <= 100 → OK (valid) |
+
+#### Impact
+- Risk: **VERY LOW** (hanya tambah validasi, tidak mengubah existing logic)
+- Data Integrity: **HIGH** (prevent impossible rules dari disimpan)
+- UX: **HIGH** (user dapat feedback immediate saat create/edit)
+- Code Complexity: **MEDIUM** (tambah ~150 lines well-documented code)
+- Performance: **MINIMAL** (O(n²) per parameter, negligible untuk <10 conditions)
+- Breaking Changes: **NONE** (rules existing tidak terpengaruh)
+
+#### Catatan Tambahan
+- Validasi berjalan di backend sebelum save ke database
+- Rules yang sudah ada di database (mungkin ada yang bertentangan) tidak divalidasi ulang, dibiarkan as-is
+- Error message mencakup unit (Mbps, ms, %) dan parameter label yang user-friendly
+- Epsilon comparison (0.01) untuk equality check mengatasi floating-point precision issue
+
+---
+
+## 2026-09-01 (Update #3)
+
+### PERBAIKAN BUG: Rule Forward Chaining - Unit & Parameter Label Tidak Muncul di Kondisi Rule
+
+#### Deskripsi Bug
+- Pada halaman list rule (/rules), kolom "Kondisi" hanya menampilkan nilai numerik tanpa satuan dan label parameter.
+- User melaporkan: kondisi rule hanya tampil "latency > 10" tanpa unit "ms", seharusnya "Latency > 10 ms".
+- Dampak: User kesulitan memahami kondisi rule karena tidak ada informasi tentang satuan (Mbps, ms, %) dan parameter tidak user-friendly (lowercase).
+
+#### Root Cause
+**Accessor Tidak Di-Serialize ke JSON Response**
+- Model `RuleCondition` memiliki accessor `getUnitAttribute()` dan `getParameterLabelAttribute()` yang berfungsi dengan baik di PHP.
+- **TETAPI** Laravel Eloquent **tidak otomatis meng-append accessor** ke JSON response kecuali explicitly di-define di `protected $appends`.
+- Tanpa `$appends`, JSON response hanya include kolom database (`parameter`, `operator`, `value`), tidak include computed accessor.
+- Vue Index.vue mencoba akses `cond.unit` dan `cond.parameter_label` → **undefined**.
+- Hasil: kondisi tampil tanpa satuan dan label yang proper.
+
+#### File yang Diperbaiki
+1. **app/Models/RuleCondition.php** (baris 25-32)
+
+#### Perubahan Teknis
+
+**Tambah `protected $appends` di Model RuleCondition**
+- **Sebelum**: 
+  ```php
+  protected $casts = [
+      'value' => 'decimal:2',
+  ];
+  
+  // Langsung ke relasi method, tidak ada $appends
+  public function rule() { ... }
+  ```
+  - Accessor hanya tersedia di PHP, tidak di-serialize ke JSON
+  - Inertia response tidak include `unit` dan `parameter_label`
+  - Vue akses `cond.unit` → `undefined`
+  
+- **Sesudah**:
+  ```php
+  protected $casts = [
+      'value' => 'decimal:2',
+  ];
+  
+  // Append accessor ke JSON response agar Vue bisa akses unit dan parameter_label.
+  // Tanpa $appends, accessor hanya tersedia di PHP, tidak di-serialize ke JSON.
+  protected $appends = [
+      'unit',
+      'parameter_label',
+  ];
+  
+  public function rule() { ... }
+  ```
+  - Accessor otomatis di-append ke setiap JSON serialization
+  - Inertia response include `unit: "ms"` dan `parameter_label: "Latency"`
+  - Vue bisa akses `cond.unit` dan `cond.parameter_label` dengan normal
+
+#### Komentar Penjelasan yang Ditambahkan
+- Komentar menjelaskan kenapa `$appends` diperlukan untuk Inertia/JSON response
+- Komentar menjelaskan dampak jika tidak ada `$appends` (accessor tidak ter-include)
+- Komentar sebagai bug fix documentation untuk future reference
+
+#### Verifikasi
+| Check | Hasil |
+|-------|-------|
+| **Debug Command** | ✅ JSON response include `"unit": "ms"` dan `"parameter_label": "Latency"` |
+| `php artisan test` | ✅ 2 passed (11 assertions) |
+| **Halaman Rules Index** | ✅ Kondisi tampil lengkap: "Latency > 10 ms" (sebelumnya: "latency > 10") |
+| **Multiple Parameters** | ✅ "Bandwidth > 100 Mbps AND Latency > 50 ms AND Packet Loss > 5 %" |
+
+#### Display Comparison
+
+**Sebelum Fix:**
+```
+Kondisi: latency > 10          ❌ (tidak ada unit, parameter lowercase)
+Kondisi: bandwidth > 100       ❌ (tidak ada unit Mbps)
+Kondisi: packet_loss > 5       ❌ (tidak ada unit %, underscore tidak friendly)
+```
+
+**Sesudah Fix:**
+```
+Kondisi: Latency > 10 ms       ✅ (ada unit, parameter capitalized)
+Kondisi: Bandwidth > 100 Mbps  ✅ (ada unit Mbps)
+Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space)
+```
+
+#### Impact
+- Risk: **VERY LOW** (hanya menambah property ke JSON, tidak mengubah business logic)
+- Benefit: **HIGH** (readability & UX meningkat signifikan, informasi lebih jelas)
+- Breaking Changes: **NONE** (backward compatible, property tambahan tidak break existing code)
+- Performance: **MINIMAL** (accessor sudah di-cache oleh Eloquent, overhead negligible)
+
+---
+
+## 2026-09-01 (Update #2)
+
+### PERBAIKAN BUG: Rule Forward Chaining - "Device Telah Dihapus" Muncul Padahal Device Masih Ada
+
+#### Deskripsi Bug
+- Pada halaman list rule (/rules), kolom "Target Device" menampilkan badge merah "Device telah dihapus" untuk semua rule dengan target_type = 'specific', padahal device masih ada di database dan belum dihapus.
+- User melaporkan: setelah membuat rule baru dengan specific device, rule berhasil tersimpan (ada pesan sukses), tetapi di tabel list rule muncul "Device telah dihapus".
+- Verifikasi menunjukkan: form edit rule dapat menampilkan device dengan benar di dropdown, membuktikan data tersimpan dengan benar dan relasi berfungsi.
+
+#### Root Cause
+1. **Type Mismatch (Preventive Fix)**: HTML `<option value="...">` selalu mengkonversi value menjadi string, sehingga saat user memilih device dengan id `1`, yang ter-bind adalah string `"1"` bukan number `1`. Meskipun Laravel validasi akan cast ke integer, best practice adalah memastikan type consistency sejak dari frontend.
+2. **Naming Convention Mismatch (Critical Bug)**: Laravel Eloquent mengirim relasi dengan **snake_case** (`target_device`) dalam JSON response, tetapi Vue mengakses dengan **camelCase** (`targetDevice`). Ini menyebabkan `rule.targetDevice` selalu `undefined`, sehingga kondisi fallback ke "Device telah dihapus" meskipun data tersimpan dengan benar di database.
+3. **Display Logic Issue (Additional Fix)**: Kondisi `v-else-if="rule.targetDevice"` di Index.vue terlalu generic dan tidak cukup defensive. Perlu double-check: apakah `target_device_id` ada DAN apakah relasi `target_device` ter-load.
+
+#### File yang Diperbaiki
+1. **resources/js/Pages/Rules/Create.vue** (baris 44)
+2. **resources/js/Pages/Rules/Edit.vue** (baris 44)
+3. **resources/js/Pages/Rules/Index.vue** (baris 46-50)
+
+#### Perubahan Teknis
+
+**Perbaikan 1: Type Consistency di Vue Form (Create.vue & Edit.vue)**
+- **Sebelum**: `<select v-model="form.target_device_id" :required="...">`
+  - Value dari dropdown adalah string (misal: `"1"`, `"2"`)
+  - Bisa menyebabkan type mismatch antara frontend (string) dan backend (integer)
+- **Sesudah**: `<select v-model.number="form.target_device_id" :required="...">`
+  - Vue modifier `.number` otomatis cast value ke integer
+  - Memastikan `form.target_device_id` selalu bertype number (misal: `1`, `2`)
+  - Best practice untuk form yang mengirim numeric ID
+
+**Perbaikan 2: Naming Convention Fix - snake_case vs camelCase (Index.vue)**
+- **Sebelum**: 
+  ```vue
+  <span v-else-if="rule.targetDevice" class="badge">{{ rule.targetDevice.ip_address }}</span>
+  ```
+  - Mengakses relasi dengan camelCase `rule.targetDevice`
+  - **BUG CRITICAL**: Laravel Eloquent mengirim JSON dengan snake_case `target_device`
+  - `rule.targetDevice` selalu `undefined` karena property tidak ada
+  - False positive: selalu fallback ke "Device telah dihapus"
+- **Sesudah**:
+  ```vue
+  <span v-else-if="rule.target_device_id && rule.target_device" class="badge">
+    {{ rule.target_device.ip_address }}
+  </span>
+  ```
+  - Mengakses relasi dengan snake_case `rule.target_device` (sesuai Laravel convention)
+  - Double-check: cek `rule.target_device_id` (apakah ada ID tersimpan) DAN `rule.target_device` (apakah relasi ter-load)
+  - Lebih defensive dan explicit, mencegah false positive
+
+#### Komentar Penjelasan yang Ditambahkan
+- **Create.vue & Edit.vue**: Komentar menjelaskan fungsi `.number` modifier dan kenapa diperlukan untuk bug prevention
+- **Index.vue**: Komentar menjelaskan logika defensive check, naming convention snake_case Laravel, dan tujuan mencegah false positive "Device telah dihapus"
+
+#### Verifikasi
+| Check | Hasil |
+|-------|-------|
+| `npm run build` | ✅ Success (629 modules, 231.67 kB JS gzip 81.32 kB) |
+| `php artisan test` | ✅ 2 passed (11 assertions) |
+| Form Create - Specific Device | ✅ Rule tersimpan, IP device muncul di list (tidak ada "Device telah dihapus") |
+| Form Edit - Ubah Device | ✅ Perubahan tersimpan dengan benar |
+| Halaman Index - Existing Rules | ✅ Semua rule specific device menampilkan IP address yang benar |
+| Form Create - All Devices (Regression) | ✅ Tidak broken, badge "All Devices" muncul dengan benar |
+
+#### Impact
+- Risk: LOW (hanya perubahan type casting dan display logic, tidak mengubah backend atau database)
+- Benefit: HIGH (bug critical yang membuat UI misleading sudah resolved, user tidak bingung lagi)
+- Breaking Changes: NONE (backward compatible, semua fitur existing tetap berfungsi)
+
+#### Catatan Tambahan
+- Dropdown "Pilih Device" di form tambah/edit rule sudah benar sejak awal: hanya menampilkan device yang ada di database, device yang dihapus tidak muncul di dropdown.
+- Bug terjadi karena **naming convention mismatch**: Laravel mengirim relasi sebagai `target_device` (snake_case) tetapi Vue mengakses sebagai `targetDevice` (camelCase).
+- **Pembelajaran penting**: Laravel Eloquent secara default mengirim relasi dengan snake_case dalam JSON response. Vue harus mengakses dengan nama yang sama persis, tidak boleh diubah ke camelCase.
+- Form edit dapat load device dengan benar karena menggunakan single model (bukan paginator), tetapi halaman index menggunakan paginator yang struktur JSONnya berbeda.
+- Debug dilakukan dengan membuat command `php artisan debug:rule-relation` dan `php artisan debug:inertia-rule` untuk melihat struktur data actual dari backend.
+
+---
+
+## 2026-09-01 (Update #1)
+
+### PERBAIKAN BUG: Rule Forward Chaining - Form "All Devices" Tidak Bisa Disimpan
+
+#### Deskripsi Bug
+- Pada form tambah rule (Rules/Create.vue) dan form edit rule (Rules/Edit.vue), ketika user memilih "Target Device: All Devices" dan klik tombol "Simpan Rule", form tidak ter-submit dan tidak ada feedback apapun (tidak ada pesan error atau sukses).
+- Root cause: HTML5 validation attribute `required` pada dropdown "Pilih Device" masih aktif meskipun field disembunyikan dengan `v-show`. Browser memblokir form submit karena mendeteksi field required yang kosong, padahal field tersebut tidak diperlukan saat `target_type = 'all'`.
+
+#### File yang Diperbaiki
+1. **resources/js/Pages/Rules/Create.vue** (baris 44)
+2. **resources/js/Pages/Rules/Edit.vue** (baris 44)
+
+#### Perubahan Teknis
+- **Sebelum**: `<select v-model="form.target_device_id" required>`
+  - Attribute `required` bersifat static, selalu aktif
+  - HTML5 validation memblokir submit ketika `target_type = 'all'` karena field `target_device_id` bernilai `null`/empty
+- **Sesudah**: `<select v-model="form.target_device_id" :required="form.target_type === 'specific'">`
+  - Attribute `required` bersifat conditional (Vue binding)
+  - Hanya aktif jika `target_type === 'specific'`
+  - Jika `target_type === 'all'`, attribute `required` tidak ada di DOM sehingga validasi browser di-skip dan form submit berhasil
+
+#### Komentar Penjelasan yang Ditambahkan
+```vue
+<!-- Conditional required: hanya wajib jika target_type === 'specific'.
+     Jika target_type === 'all', field ini tidak perlu diisi dan validasi browser di-skip.
+     Bug fix: form tidak bisa submit saat pilih "All Devices" karena HTML5 validation
+     masih aktif pada field yang disembunyikan dengan v-show. -->
+```
+
+#### Verifikasi
+| Check | Hasil |
+|-------|-------|
+| `npm run build` | ✅ Success (629 modules, 231.67 kB JS gzip 81.31 kB) |
+| `php artisan test` | ✅ 2 passed (11 assertions) |
+| Form Create - All Devices | ✅ Form submit berhasil, rule tersimpan |
+| Form Create - Specific Device (validasi) | ✅ Browser menampilkan "Please fill out this field" jika device tidak dipilih |
+| Form Edit - Ubah ke All Devices | ✅ Update berhasil |
+
+#### Impact
+- Risk: LOW (hanya perubahan HTML attribute, tidak mengubah backend logic)
+- Benefit: HIGH (bug critical yang menghalangi penambahan rule dengan target "All Devices" sudah resolved)
+
+---
+
+## 2026-08-31
+
+### PERBAIKAN STYLING & UI (Style-Only) + BUG FIXES
+
+#### 1. Refactoring CSS Global (`resources/css/app.css`)
+- Tambahkan **CSS Variables (Design Tokens)**: warna (primary, success, warning, danger, info, netral), radius, shadow, font, spacing, transition, layout
+- Ekstrak **shared styles** dari 7 file Vue ke global: `.btn*` (7 varian), `.card`, `.page-container`, `.page-header`, `.badge` (5 varian), `.table` + `.pagination`, `.form-group`, `.alert` (4 varian), `.toggle-switch`, `.status-message`, `.info-panel`, `.form-hint`/`.form-error`
+- Hapus `body { display: flex }` → ganti `display: block` + `overflow-x: hidden` untuk mencegah overflow horizontal
+- Body reset sudah include font-family, box-sizing, margin/padding 0
+
+#### 2. Perbaikan Layout & Styling Semua Halaman (7 file Vue)
+| File | Perubahan Utama |
+|------|-----------------|
+| `AppLayout.vue` | Sidebar: gradient bg, border-left accent 3px pada hover/active, transition smooth, flex gap 12px, CSS variables; Content: full-width (hapus max-width 1200px, hapus justify-content center), padding-top 32px |
+| `Dashboard/Index.vue` | Stat cards: angka 36px bold, icon circle gradient bg, hover border-primary + elevation, hapus CSS duplikat; Toggle card: badge status modern |
+| `Devices/Index.vue` | Hapus CSS duplikat; Zebra striping tabel (`nth-child(even)`); Table card disembunyikan saat form buka (`v-show="!isFormOpen"`); Layout override max-width 1100px |
+| `Devices/Edit.vue` | Hanya sisa CSS spesifik: page-container max-width 760px + form-row flex |
+| `Rules/Index.vue` | Hapus CSS duplikat; Zebra striping tabel; Toggle switch custom 48x22px; Badge code monospace |
+| `Rules/Create.vue` & `Edit.vue` | Condition card pakai CSS variables; Grid 3 kolom (parameter/operator/value); Unit badge styling |
+| `IssueLogs/Index.vue` | Metric display: colored bg + left border 3px (good=hijau, bad=merah); Zebra striping; Auto-refresh bar polished |
+
+#### 3. Emoji Removal — Clean & Professional Output
+| Target | Jumlah | Pengganti |
+|--------|--------|-----------|
+| Console Commands (7 file) | 7 file | `[INFO]`, `[OK]`, `[ERROR]`, `[WARN]`, `[LIST]`, `[DATA]`, `[TIME]`, `[SETUP]`, `[STOP]`, `[ALERT]`, `[TEST]`, `[CREATE]`, `[LOC]`, `[SIGNAL]`, `[TIPS]` |
+| `PrometheusService.php` | 2 log line | `[WARN] PROMETHEUS SIMULATION MODE...` |
+| Vue files | 0 (sudah bersih) | — |
+
+#### 4. Bug Fixes
+- **Overflow horizontal**: `body { display: block; overflow-x: hidden }` + `.main-content` full-width tanpa padding samping
+- **Content menempel atas**: Tambah `padding-top: 32px` pada `.main-content`
+- **Devices form + table overlap**: Table card `v-show="!isFormOpen"` — saat form buka hanya form yang tampil
+- **PHP Syntax**: Semua 8 file PHP lolos `php -l` (7 commands + PrometheusService)
+
+#### 5. Verifikasi
+| Check | Hasil |
+|-------|-------|
+| `npm run build` | ✅ Success (629 modules, CSS 10.73 kB gzip 2.53 kB) |
+| `php artisan test` | ✅ 2 passed (11 assertions) |
+| `php -l` (8 file) | ✅ No syntax errors |
+| `php artisan route:list` | ✅ 18 route utuh |
+| Emoji di web | ✅ Clean |
+
+---
+
+## 2026-08-30
+
+### MIGRASI FULL: Blade → Vue 3 + Inertia.js (SPA)
+
+#### Setup Environment (Fase 0)
+- **Composer**: `inertiajs/inertia-laravel` v3.3.1
+- **NPM**: `vue@3`, `@vitejs/plugin-vue`, `@inertiajs/vue3`
+- **vite.config.js**: Tambah plugin `vue()`; input `resources/css/app.css`, `resources/js/app.js`
+- **resources/js/app.js**: `createInertiaApp` dengan `import.meta.glob('./Pages/**/*.vue')` async resolve, default layout `AppLayout.vue`, register global `Link` & `Head`, progress bar warna `#2ecc71`
+- **resources/views/app.blade.php**: Root view Inertia (`@inertia`, `@inertiaHead`, `<title inertia>`, CSRF meta, `@vite`)
+- **Middleware**: `HandleInertiaRequests` (`$rootView = 'app'`), share `flash` (success/error) + `old` input, terdaftar di `bootstrap/app.php` via `web(append:)`
+
+#### Fase 1: Dashboard
+- **Layout**: `resources/js/Pages/Layouts/AppLayout.vue` — sidebar fixed 280px, `flex-shrink: 0`, `main-content` flex center, `content-wrapper` max-width 1200px
+- **Page**: `resources/js/Pages/Dashboard/Index.vue` — stat cards dengan SVG icon, badge status modern (success/warning/danger), toggle monitoring native fetch + `router.reload()`, worker health badge computed, format heartbeat Asia/Jakarta
+- **Controller**: `DashboardController::index` → `Inertia::render('Dashboard/Index', compact(...))`
+- **Test**: `tests/Feature/ExampleTest.php` → `assertInertia(component('Dashboard/Index').has('totalDevices').has('totalRules'))`
+- **Cleanup**: Hapus `resources/views/dashboard/index.blade.php` + folder kosong
+
+#### Fase 2: Devices (Index + Edit)
+- **Index**: `Devices/Index.vue` — form tambah inline (v-show), Connect SNMP native fetch `/devices/ping`, table card modern, search/pagination Inertia `<Link>`, action buttons (Edit Link, Hapus useForm.delete)
+- **Edit**: `Devices/Edit.vue` — form card lengkap, Connect SNMP, verified IP logic, useForm.put
+- **Controller**: `index`, `edit` → `Inertia::render`; `store/update/destroy/pingDevice` tidak diubah
+- **Cleanup**: Hapus `resources/views/devices/index.blade.php`, `edit.blade.php` + folder
+
+#### Fase 3: Rules (Index + Create + Edit)
+- **Index**: `Rules/Index.vue` — badge code monospace, toggle switch native fetch `/rules/{id}/toggle`, condition list rapi, search/pagination Inertia
+- **Create**: `Rules/Create.vue` — form card, kondisi dinamis grid 3 kolom (parameter/operator/value), unit badge (Mbps/ms/%), add/remove kondisi
+- **Edit**: `Rules/Edit.vue` — mirip Create, prepopulate data rule + conditions
+- **Controller**: `index`, `create`, `edit` → `Inertia::render`; `store/update/destroy/toggle` tidak diubah
+- **Cleanup**: Hapus `resources/views/rules/index.blade.php`, `create.blade.php`, `edit.blade.php` + folder
+
+#### Fase 4: Issue Logs
+- **Index**: `IssueLogs/Index.vue` — tabel metrics dengan badge warna (good/bad), auto-refresh fetch `/api/issue-logs` 60 detik + manual refresh + indicator dot animasi, filter tanggal, pagination, pagination info
+- **Controller**: `index` → `Inertia::render`; `indexApi` tetap untuk auto-refresh
+- **Cleanup**: Hapus `resources/views/issue_logs/index.blade.php`, `layouts/app.blade.php` + folder `layouts`
+
+#### Styling & Layout Perbaikan
+- **Global Reset**: `resources/css/app.css` — reset `*`, `body` (dipindah dari AppLayout scoped)
+- **Layout**: `AppLayout.vue` — sidebar fixed 280px `flex-shrink: 0`, link text overflow ellipsis, `main-content` flex center, `content-wrapper` max-width 1200px, padding 32px 24px
+- **Page Container**: Semua page — `max-width` disesuaikan per modul + `padding: 0 24px` (Dashboard/Devices/Index/Rules/Index: 1100px; Devices/Edit: 760px; Rules/Create/Edit: 860px; IssueLogs: 1200px)
+- **Design System Konsisten**:
+  - Card: radius 12px, shadow subtle, border `#e8edf3`, padding 28px
+  - Input/Select: border `#d1d9e0`, focus ring `#3498db` 3px
+  - Button Primary: `#3498db` → hover `#2980b9`; Secondary: `#95a5a6`; Ghost: transparent+border; Danger: `#e74c3c`
+  - Badge: pill radius 999px, font-weight 600
+  - Table: header `#f8fafc` + border-bottom 2px, row hover `#f8fbff`
+  - Color: Primary `#3498db`, Success `#27ae60`/`#2ecc71`, Warning `#e67e22`/`#f39c12`, Danger `#e74c3c`
+
+#### Backend Logic (TIDAK DIUBAH)
+- Migrasi, Model, Service (PrometheusService, ForwardChainingService, PrometheusTargetService), Scheduler, Console Commands — **100% utuh**
+
+#### Verifikasi Final
+- `npm run build` ✅ Success (629 modules, 231 kB JS gzip 81 kB)
+- `php artisan test` ✅ 2 passed (11 assertions)
+- `php artisan serve` → HTTP 200 OK
+- `php artisan route:list` → 18 route utuh
+- Blade orphan terhapus: `dashboard/`, `devices/`, `rules/`, `issue_logs/`, `layouts/` — hanya `welcome.blade.php` tersisa
+
+---
+
 ## 2026-08-22
 
 ### Update Modul Log Gangguan + Auto-Refresh UI

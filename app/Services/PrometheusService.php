@@ -18,7 +18,7 @@ class PrometheusService
         // Log warning jika simulation mode aktif
         // Ini sangat penting agar admin tahu bahwa data adalah SIMULASI, bukan data real!
         if ($this->simulationMode) {
-            Log::warning('Ã¢Å¡Â Ã¯Â¸Â PROMETHEUS SIMULATION MODE ACTIVE! Data yang digunakan adalah FAKE/SIMULASI, bukan data real dari Prometheus.');
+            Log::warning('[WARN] PROMETHEUS SIMULATION MODE ACTIVE! Data yang digunakan adalah FAKE/SIMULASI, bukan data real dari Prometheus.');
             Log::warning('Untuk menggunakan data real, set PROMETHEUS_SIMULATION_MODE=false di file .env');
         }
     }
@@ -131,11 +131,11 @@ class PrometheusService
         }
 
         // Regex pattern: instance=~"ip1|ip2|ip3"
-        // Dot (.) di regex match karakter apapun, termasuk literal dot Ã¢â‚¬â€œ jadi tidak perlu escape
+        // Dot (.) di regex match karakter apapun, termasuk literal dot - jadi tidak perlu escape
         $pattern = implode('|', $ipAddresses);
 
         try {
-            // 1. BANDWIDTH batch Ã¢â‚¬â€œ sum by instance untuk total semua interface per device
+            // 1. BANDWIDTH batch - sum by instance untuk total semua interface per device
             $q = "sum by (instance) (rate(ifHCInOctets{instance=~\"{$pattern}\"}[5m])) * 8 / 1000000";
             $r = Http::timeout(8)->get("{$this->baseUrl}/api/v1/query", ['query' => $q]);
             if ($r->successful()) {
@@ -145,7 +145,7 @@ class PrometheusService
                 }
             }
 
-            // 2. LATENCY batch Ã¢â‚¬â€œ phase rtt untuk ICMP ping
+            // 2. LATENCY batch - phase rtt untuk ICMP ping
             $q = "probe_icmp_duration_seconds{instance=~\"{$pattern}\",phase=\"rtt\"} * 1000";
             $r = Http::timeout(8)->get("{$this->baseUrl}/api/v1/query", ['query' => $q]);
             if ($r->successful()) {
@@ -167,7 +167,7 @@ class PrometheusService
 
             // 4. Simulation mode fallback
             if ($this->simulationMode) {
-                Log::warning("Ã¢Å¡Â Ã¯Â¸Â Simulation mode: Generating fake metrics for batch query (" . count($results) . " devices)");
+                Log::warning("[WARN] Simulation mode: Generating fake metrics for batch query (" . count($results) . " devices)");
                 foreach ($results as $ip => $m) {
                     if ($m['bandwidth'] === null) $results[$ip]['bandwidth'] = rand(0, 100) + (rand(0, 99) / 100);
                     if ($m['latency'] === null) $results[$ip]['latency'] = rand(10, 150) + (rand(0, 99) / 100);

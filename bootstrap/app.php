@@ -11,7 +11,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Registrasi middleware Inertia pada kelompok web.
+        // HandleInertiaRequests berupa shared data default + root view (app),
+        // dan hanya mengubah response bila controller mengembalikan Inertia::render().
+        $middleware->web(append: [
+            \App\Http\Middleware\HandleInertiaRequests::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

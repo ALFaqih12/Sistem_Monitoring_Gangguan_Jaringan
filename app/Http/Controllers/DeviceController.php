@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Services\PrometheusTargetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 use Throwable;
 
 class DeviceController extends Controller
@@ -41,7 +42,10 @@ class DeviceController extends Controller
             ->paginate(15)
             ->withQueryString(); // Mempertahankan parameter search di URL pagination
 
-        return view('devices.index', compact('devices', 'search'));
+        // Migrasi Blade -> Inertia: halaman device dirender Vue Devices/Index.vue.
+        // Props (devices paginator + search) dikirim sama; withQueryString() tetap
+        // dipertahankan supaya parameter search kekal di URL pagination.
+        return Inertia::render('Devices/Index', compact('devices', 'search'));
     }
 
     // 2. Menyimpan Data ke Database
@@ -134,7 +138,8 @@ class DeviceController extends Controller
     // Menampilkan halaman Edit
     public function edit(Device $device)
     {
-        return view('devices.edit', compact('device'));
+        // Migrasi Blade -> Inertia: form edit device dirender Vue Devices/Edit.vue.
+        return Inertia::render('Devices/Edit', compact('device'));
     }
 
     // Menyimpan perubahan data ke Database

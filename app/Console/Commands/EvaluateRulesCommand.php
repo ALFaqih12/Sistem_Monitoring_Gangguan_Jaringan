@@ -29,22 +29,22 @@ class EvaluateRulesCommand extends Command
      */
     public function handle(ForwardChainingService $forwardChaining): int
     {
-        $this->info('🔍 Memulai evaluasi Forward Chaining...');
-        $this->info('⏰ Waktu: ' . now()->format('Y-m-d H:i:s'));
+        $this->info('[INFO] Memulai evaluasi Forward Chaining...');
+        $this->info('[TIME] Waktu: ' . now()->format('Y-m-d H:i:s'));
         $this->newLine();
 
         // Jalankan evaluasi semua rule
         $result = $forwardChaining->evaluateAllRules();
 
         // Tampilkan hasil evaluasi
-        $this->info("✅ Evaluasi selesai!");
-        $this->info("📊 Total rule yang dicek: {$result['checked']}");
-        $this->info("⚠️  Gangguan terdeteksi: " . count($result['detected']));
+        $this->info("[OK] Evaluasi selesai!");
+        $this->info("[DATA] Total rule yang dicek: {$result['checked']}");
+        $this->info("[WARN] Gangguan terdeteksi: " . count($result['detected']));
         
         // Tampilkan detail gangguan yang terdeteksi (jika ada)
         if (count($result['detected']) > 0) {
             $this->newLine();
-            $this->warn('📋 Detail Gangguan yang Terdeteksi:');
+            $this->warn('[LIST] Detail Gangguan yang Terdeteksi:');
             $this->newLine();
 
             foreach ($result['detected'] as $index => $issue) {
@@ -63,11 +63,11 @@ class EvaluateRulesCommand extends Command
             }
         } else {
             $this->newLine();
-            $this->info('✨ Tidak ada gangguan yang terdeteksi. Semua device dalam kondisi normal.');
+            $this->info('[OK] Tidak ada gangguan yang terdeteksi. Semua device dalam kondisi normal.');
         }
 
         $this->newLine();
-        $this->info('✅ Command selesai dijalankan.');
+        $this->info('[OK] Command selesai dijalankan.');
 
         return Command::SUCCESS;
     }

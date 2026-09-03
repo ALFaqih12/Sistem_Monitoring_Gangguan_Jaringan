@@ -12,7 +12,7 @@
 
 - Baca seluruh TO-DO.md untuk mengetahui apa yang akan kita kerjakan, namun diskusikan terlebih dahulu dan beri konfirmasi jika ingin memulai pengerjaan
 
-- Baca secara mendalam semua yang ada di dalam folder Http, Models, database, public, routes
+- Baca secara mendalam semua yang ada di dalam folder Http, Models, database, public, routes, dan resources
 
 - jangan gunakan emoticon apapun dalam pembuatan fitur
 

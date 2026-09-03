@@ -14,12 +14,12 @@ class CheckBlackboxTargets extends Command
     {
         $prometheusUrl = env('PROMETHEUS_URL', 'http://localhost:9090');
 
-        $this->info('🔍 Memeriksa Blackbox Exporter Targets...');
-        $this->info('📍 Prometheus URL: ' . $prometheusUrl);
+        $this->info('[INFO] Memeriksa Blackbox Exporter Targets...');
+        $this->info('[LOC] Prometheus URL: ' . $prometheusUrl);
         $this->newLine();
 
         // 1. Cek targets dengan job=ping
-        $this->info('📋 STEP 1: Cek Targets dengan Job "ping"');
+        $this->info('[LIST] STEP 1: Cek Targets dengan Job "ping"');
         $this->line(str_repeat('=', 80));
 
         try {
@@ -34,9 +34,9 @@ class CheckBlackboxTargets extends Command
                 });
 
                 if (empty($pingTargets)) {
-                    $this->warn('⚠️  Tidak ada targets dengan job="ping"');
+                    $this->warn('[WARN] Tidak ada targets dengan job="ping"');
                     $this->newLine();
-                    $this->info('💡 Anda perlu menambahkan konfigurasi blackbox di prometheus.yml:');
+                    $this->info('[TIPS] Anda perlu menambahkan konfigurasi blackbox di prometheus.yml:');
                     $this->line('');
                     $this->line('  - job_name: "ping"');
                     $this->line('    metrics_path: /probe');
@@ -55,7 +55,7 @@ class CheckBlackboxTargets extends Command
                     return Command::FAILURE;
                 }
 
-                $this->info('✅ Ditemukan ' . count($pingTargets) . ' target(s) dengan job="ping"');
+                $this->info('[OK] Ditemukan ' . count($pingTargets) . ' target(s) dengan job="ping"');
                 $this->newLine();
 
                 foreach ($pingTargets as $target) {
@@ -63,7 +63,7 @@ class CheckBlackboxTargets extends Command
                     $health = $target['health'] ?? 'unknown';
                     $scrapeUrl = $target['scrapeUrl'] ?? 'N/A';
                     
-                    $healthIcon = $health === 'up' ? '✅' : '❌';
+                    $healthIcon = $health === 'up' ? '[OK] ' : '[ERROR] ';
                     $this->line("{$healthIcon} Instance: {$instance}");
                     $this->line("   Health: {$health}");
                     $this->line("   Scrape URL: {$scrapeUrl}");
@@ -71,55 +71,55 @@ class CheckBlackboxTargets extends Command
                 }
 
             } else {
-                $this->error('❌ Gagal connect ke Prometheus API');
+                $this->error('[ERROR] Gagal connect ke Prometheus API');
                 return Command::FAILURE;
             }
 
         } catch (\Exception $e) {
-            $this->error('❌ Error: ' . $e->getMessage());
+            $this->error('[ERROR] Error: ' . $e->getMessage());
             return Command::FAILURE;
         }
 
         // 2. Cek metrics yang tersedia dari blackbox
         $this->newLine();
-        $this->info('📊 STEP 2: Cek Metrics Blackbox yang Tersedia');
+        $this->info('[DATA] STEP 2: Cek Metrics Blackbox yang Tersedia');
         $this->line(str_repeat('=', 80));
 
         $testIp = '192.168.18.140'; // Dari output sebelumnya
         
         // Cek probe_success
-        $this->info('⏳ Mengecek probe_success...');
+        $this->info('[WAIT] Mengecek probe_success...');
         $query = "probe_success{instance=\"{$testIp}\"}";
         $result = $this->queryPrometheus($prometheusUrl, $query);
         
         if ($result !== null) {
-            $this->info("✅ probe_success: {$result} (1=UP, 0=DOWN)");
+            $this->info("[OK] probe_success: {$result} (1=UP, 0=DOWN)");
         } else {
-            $this->warn("⚠️  probe_success: Tidak ada data");
+            $this->warn("[WARN] probe_success: Tidak ada data");
         }
 
         // Cek probe_duration_seconds
-        $this->info('⏳ Mengecek probe_duration_seconds...');
+        $this->info('[WAIT] Mengecek probe_duration_seconds...');
         $query = "probe_duration_seconds{instance=\"{$testIp}\"}";
         $result = $this->queryPrometheus($prometheusUrl, $query);
         
         if ($result !== null) {
             $latencyMs = $result * 1000;
-            $this->info("✅ probe_duration_seconds: {$result} seconds ({$latencyMs} ms)");
+            $this->info("[OK] probe_duration_seconds: {$result} seconds ({$latencyMs} ms)");
         } else {
-            $this->warn("⚠️  probe_duration_seconds: Tidak ada data");
+            $this->warn("[WARN] probe_duration_seconds: Tidak ada data");
         }
 
         // Cek probe_icmp_duration_seconds
-        $this->info('⏳ Mengecek probe_icmp_duration_seconds...');
+        $this->info('[WAIT] Mengecek probe_icmp_duration_seconds...');
         $query = "probe_icmp_duration_seconds{instance=\"{$testIp}\"}";
         $result = $this->queryPrometheus($prometheusUrl, $query);
         
         if ($result !== null) {
             $latencyMs = $result * 1000;
-            $this->info("✅ probe_icmp_duration_seconds: {$result} seconds ({$latencyMs} ms)");
+            $this->info("[OK] probe_icmp_duration_seconds: {$result} seconds ({$latencyMs} ms)");
         } else {
-            $this->warn("⚠️  probe_icmp_duration_seconds: Tidak ada data");
+            $this->warn("[WARN] probe_icmp_duration_seconds: Tidak ada data");
         }
 
         $this->newLine();
@@ -127,14 +127,14 @@ class CheckBlackboxTargets extends Command
         $this->newLine();
 
         // 3. Rekomendasi Query
-        $this->info('💡 Rekomendasi Query untuk PrometheusService.php:');
+        $this->info('[TIPS] Rekomendasi Query untuk PrometheusService.php:');
         $this->newLine();
-        $this->line('📌 LATENCY:');
+        $this->line('[LOC] LATENCY:');
         $this->line('   $query = "probe_icmp_duration_seconds{instance=\"{$ipAddress}\"} * 1000";');
         $this->line('   atau');
         $this->line('   $query = "probe_duration_seconds{instance=\"{$ipAddress}\"} * 1000";');
         $this->newLine();
-        $this->line('📌 PACKET LOSS:');
+        $this->line('[LOC] PACKET LOSS:');
         $this->line('   $query = "(1 - probe_success{instance=\"{$ipAddress}\"}) * 100";');
         $this->newLine();
 

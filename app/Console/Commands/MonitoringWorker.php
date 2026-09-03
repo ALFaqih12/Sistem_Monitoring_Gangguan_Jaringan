@@ -46,7 +46,7 @@ class MonitoringWorker extends Command
         //     Ini penting agar DashboardController bisa verifikasi worker berjalan
         $pidFile = storage_path('app/monitoring-worker.pid');
         file_put_contents($pidFile, $pid);
-        $this->info("🔧 Monitoring Worker dimulai (PID: {$pid})");
+        $this->info("[SETUP] Monitoring Worker dimulai (PID: {$pid})");
         $this->line("   PID file: {$pidFile}");
         $this->line("   Interval evaluasi: " . self::EVALUATION_INTERVAL . " detik (OPTIMIZED)");
 
@@ -56,7 +56,7 @@ class MonitoringWorker extends Command
             $isActive = Cache::get('monitoring_active', false);
 
             if (!$isActive) {
-                $this->info("⏹  Monitoring dinonaktifkan. Worker berhenti.");
+                $this->info("[STOP] Monitoring dinonaktifkan. Worker berhenti.");
                 Log::info("Monitoring Worker (PID: {$pid}): Berhenti karena monitoring_active = false.");
                 break;
             }
@@ -67,7 +67,7 @@ class MonitoringWorker extends Command
             //     (misal: proses mati diam-diam, maka heartbeat tidak ter-update).
             Cache::put('worker_last_heartbeat', now()->timestamp, 300);
 
-            $this->info("🔍 Evaluasi Forward Chaining dimulai...");
+            $this->info("[INFO] Evaluasi Forward Chaining dimulai...");
             $this->line("   Waktu: " . now()->format('Y-m-d H:i:s'));
 
             // Track execution time untuk monitoring performance
@@ -79,20 +79,20 @@ class MonitoringWorker extends Command
 
                 $executionTime = round((microtime(true) - $startTime) * 1000, 2); // ms
 
-                $this->info("✅ Evaluasi selesai!");
+                $this->info("[OK] Evaluasi selesai!");
                 $this->line("   Rule dicek: {$result['checked']}");
                 $this->line("   Gangguan terdeteksi: " . count($result['detected']));
                 $this->line("   Execution time: {$executionTime} ms");
 
                 // Warning jika execution time > 50% dari interval (risk overlap)
                 if ($executionTime > (self::EVALUATION_INTERVAL * 1000 * 0.5)) {
-                    $this->warn("   ⚠️  Execution time terlalu lama! Pertimbangkan optimasi atau naikkan interval.");
+                    $this->warn("   [WARN] Execution time terlalu lama! Pertimbangkan optimasi atau naikkan interval.");
                     Log::warning("MonitoringWorker: Execution time {$executionTime}ms mendekati interval " . self::EVALUATION_INTERVAL . "s");
                 }
 
                 if (count($result['detected']) > 0) {
                     foreach ($result['detected'] as $issue) {
-                        $this->warn("   🚨 {$issue['rule']->code} - {$issue['rule']->name} pada {$issue['device']->ip_address}");
+                        $this->warn("   [ALERT] {$issue['rule']->code} - {$issue['rule']->name} pada {$issue['device']->ip_address}");
                     }
                 }
 
@@ -100,12 +100,12 @@ class MonitoringWorker extends Command
                 Cache::put('monitoring_last_execution', now()->timestamp, 300);
 
             } catch (\Throwable $e) {
-                $this->error("❌ Error saat evaluasi: " . $e->getMessage());
+                $this->error("[ERROR] Error saat evaluasi: " . $e->getMessage());
                 Log::error("Monitoring Worker: Error evaluasi - " . $e->getMessage());
             }
 
             // -- 3. Tunggu sebelum evaluasi berikutnya --
-            $this->line("   ⏳ Menunggu " . self::EVALUATION_INTERVAL . " detik...");
+            $this->line("   [WAIT] Menunggu " . self::EVALUATION_INTERVAL . " detik...");
             $this->newLine();
             sleep(self::EVALUATION_INTERVAL);
         }
@@ -113,7 +113,7 @@ class MonitoringWorker extends Command
         // -- 4. Bersihkan PID file saat worker berhenti --
         if (file_exists($pidFile)) {
             @unlink($pidFile);
-            $this->info("🧹 PID file dihapus.");
+            $this->info("[CLEANUP] PID file dihapus.");
         }
 
         return Command::SUCCESS;

@@ -26,7 +26,7 @@ class SetupBlackboxTargets extends Command
      */
     public function handle(): int
     {
-        $this->info('🔧 Setup Blackbox Targets...');
+        $this->info('[SETUP] Setup Blackbox Targets...');
         $this->newLine();
 
         // Path file blackbox-targets.json (di luar folder web-app)
@@ -53,9 +53,9 @@ class SetupBlackboxTargets extends Command
         }
 
         if (empty($devices)) {
-            $this->warn('⚠️  Tidak ada device ditemukan. File akan dibuat dengan array kosong.');
+            $this->warn('[WARN] Tidak ada device ditemukan. File akan dibuat dengan array kosong.');
         } else {
-            $this->info('✅ Ditemukan ' . count($devices) . ' IP address.');
+            $this->info('[OK] Ditemukan ' . count($devices) . ' IP address.');
         }
 
         // Buat array targets untuk blackbox
@@ -77,30 +77,30 @@ class SetupBlackboxTargets extends Command
             $bytesWritten = File::put($filePath, $json);
             
             if ($bytesWritten === false) {
-                $this->error('❌ Gagal menulis file: ' . $filePath);
-                $this->info('💡 Coba jalankan terminal sebagai Administrator.');
+                $this->error('[ERROR] Gagal menulis file: ' . $filePath);
+                $this->info('[TIPS] Coba jalankan terminal sebagai Administrator.');
                 return Command::FAILURE;
             }
             
-            $this->info('✅ File berhasil dibuat: ' . $filePath);
+            $this->info('[OK] File berhasil dibuat: ' . $filePath);
             $this->newLine();
             
             // Tampilkan isi file
-            $this->line('📄 Isi file:');
+            $this->line('[FILE] Isi file:');
             $this->line($json);
             $this->newLine();
             
-            $this->info('✅ Berhasil!');
+            $this->info('[OK] Berhasil!');
             $this->newLine();
             
-            $this->info('⚙️  Langkah selanjutnya:');
+            $this->info('[CONFIG]   Langkah selanjutnya:');
             $this->line('  1. Tambahkan konfigurasi file_sd_configs di prometheus.yml');
             $this->line('  2. Restart Prometheus');
             $this->line('  3. Jalankan: php artisan test:prometheus --ip=IP_ANDA');
             
         } catch (\Exception $e) {
-            $this->error('❌ Error: ' . $e->getMessage());
-            $this->info('💡 Coba jalankan terminal sebagai Administrator.');
+            $this->error('[ERROR] Error: ' . $e->getMessage());
+            $this->info('[TIPS] Coba jalankan terminal sebagai Administrator.');
             return Command::FAILURE;
         }
 

@@ -24,10 +24,14 @@ class ExampleTest extends TestCase
         // Dashboard harus mengembalikan status 200
         $response->assertStatus(200);
 
-        // Pastikan halaman mengandung elemen khas Dashboard
-        $response->assertSee('Dashboard Monitoring');
-        $response->assertSee('Total Target Device');
-        $response->assertSee('Total Rule Forward Chaining');
-        $response->assertSee('Start Monitoring');
+        // Setelah migrasi ke Inertia, teks halaman ("Dashboard Monitoring", dst.)
+        // dirender di sisi klien lewat Vue — sehingga assertSee() pada response
+        // server tidak lagi berhasil. Response server berisi data-page JSON.
+        // Pakai assertInertia untuk memverifikasi komponen + props yang dikirim.
+        $response->assertInertia(fn ($page) => $page
+            ->component('Dashboard/Index')
+            ->has('totalDevices')
+            ->has('totalRules')
+        );
     }
 }
