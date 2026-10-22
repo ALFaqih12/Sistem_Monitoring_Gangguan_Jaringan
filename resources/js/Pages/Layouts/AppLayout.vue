@@ -39,6 +39,13 @@
             >Log Gangguan</Link
           >
         </li>
+        <li>
+          <Link
+            href="/alerts"
+            :className="isActive('Alerts') ? 'active' : ''"
+            >Manajemen Alert</Link
+          >
+        </li>
       </ul>
     </div>
 

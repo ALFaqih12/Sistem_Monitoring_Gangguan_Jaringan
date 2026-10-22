@@ -1,31 +1,554 @@
+## 2026-10-21 (Update #8.2)
+
+### PERBAIKAN: Styling Data Tbody PDF - Font Weight, Size, dan Warna
+
+#### Deskripsi Perbaikan
+
+- Menghapus bold pada font isi data (tbody) agar lebih ringan dan mudah dibaca
+- Memperbesar font IP Address dari 8pt menjadi 9pt agar lebih jelas
+- Mengubah warna customer ID dan nama rule dari abu-abu (#999) menjadi hitam (#333) agar konsisten dengan data lain
+
+#### File yang Diperbaiki
+
+1. **resources/views/alerts/pdf.blade.php** - Perbaikan CSS tbody dan inline styling
+
+#### Perubahan Teknis
+
+**A. Font Weight Tbody (Tidak Bold)**
+
+- **Sebelum**: `tbody td` tidak ada explicit `font-weight`, inherit dari parent
+- **Sesudah**: `tbody td { font-weight: normal; }` - Data tidak bold, lebih ringan
+
+**B. Font Size IP Address (Diperbesar)**
+
+- **Sebelum**: `font-size: 8pt` - terlalu kecil untuk monospace
+- **Sesudah**: `font-size: 9pt` - lebih jelas dan mudah dibaca
+
+**C. Warna Customer ID dan Nama Rule (Konsisten)**
+
+- **Sebelum**: 
+  - Customer ID: `color: #999` (abu-abu muda via `.text-muted`)
+  - Nama Rule: `color: #999` (abu-abu muda via `.text-muted`)
+- **Sesudah**:
+  - Customer ID: `color: #333` (hitam, sama dengan data lain)
+  - Nama Rule: `color: #333` (hitam, sama dengan data lain)
+  - Font size tetap 7pt untuk secondary info
+
+#### CSS dan HTML yang Diubah
+
+```css
+/* Tbody - Font normal (tidak bold) */
+tbody td {
+    padding: 5px 5px;
+    border: 1px solid #ddd;
+    font-size: 8pt;
+    font-weight: normal;  /* TAMBAH: tidak bold */
+    font-family: 'Calibri';
+    vertical-align: top;
+    line-height: 1.3;
+}
+```
+
+```html
+<!-- IP Address: 8pt → 9pt -->
+<td class="col-ip" style="font-family: 'Courier New', monospace; font-size: 9pt;">
+
+<!-- Customer ID: #999 → #333 -->
+<div style="font-size: 7pt; color: #333;">{{ $log->customer_id }}</div>
+
+<!-- Nama Rule: #999 → #333 -->
+<div style="margin-top: 2px; font-size: 7pt; color: #333;">{{ $log->rule_name }}</div>
+```
+
+#### Verifikasi
+
+| Check                          | Hasil                                                |
+| ------------------------------ | ---------------------------------------------------- |
+| **Font weight tbody**          | Normal (tidak bold) - lebih ringan                   |
+| **Font size IP Address**       | 9pt (dari 8pt) - lebih jelas                         |
+| **Warna customer ID**          | Hitam #333 (dari abu #999) - konsisten              |
+| **Warna nama rule**            | Hitam #333 (dari abu #999) - konsisten              |
+| **Font size secondary info**   | Tetap 7pt untuk customer ID dan nama rule           |
+| **Readability**                | Lebih baik, data lebih jelas dan konsisten          |
+
+#### Impact
+
+- Risk: **VERY LOW** (hanya perbaikan styling visual)
+- Benefit: **MEDIUM** (readability meningkat, konsistensi warna lebih baik)
+- Breaking Changes: **NONE**
+
+#### Catatan
+
+- Nama pelanggan (device_name) tetap bold untuk emphasis
+- IP Address menggunakan Courier New monospace dengan size 9pt untuk clarity
+- Customer ID dan nama rule menggunakan font 7pt (lebih kecil) tapi warna hitam untuk readability
+- Semua data lain menggunakan font 8pt normal (tidak bold)
+
+---
+
+## 2026-10-21 (Update #8.1)
+
+### PERBAIKAN: Konsistensi Font pada Table Header PDF
+
+#### Deskripsi Perbaikan
+
+- Memperbaiki inkonsistensi font pada table header (thead) di template PDF
+- Semua kolom header sekarang menggunakan font yang sama: size 9pt, bold, DejaVu Sans
+- Menambahkan line-height yang konsisten untuk alignment yang lebih baik
+
+#### File yang Diperbaiki
+
+1. **resources/views/alerts/pdf.blade.php** - Perbaikan CSS thead dan column classes
+
+#### Perubahan Teknis
+
+**Sebelum:**
+- Font thead tidak explicit define font-family dan line-height
+- Column classes (.col-*) tidak memiliki font styling yang konsisten
+- Kolom IP menggunakan monospace yang berbeda dengan kolom lain di header
+
+**Sesudah:**
+- `thead th`: Tambah `font-family: 'DejaVu Sans'`, `line-height: 1.2` untuk konsistensi
+- Semua `.col-*` classes: Tambah `font-size: 9pt`, `font-weight: bold`, `font-family: 'DejaVu Sans'`
+- `tbody td`: Tambah explicit `font-family: 'DejaVu Sans'`, `line-height: 1.3`
+- Kolom IP di tbody tetap monospace (hanya untuk data, bukan header)
+
+#### CSS yang Ditambahkan
+
+```css
+/* Thead - Konsistensi penuh */
+thead th {
+    padding: 7px 5px;
+    text-align: left;
+    font-size: 9pt;
+    font-weight: bold;
+    font-family: 'DejaVu Sans', Arial, sans-serif;
+    border: 1px solid #333;
+    line-height: 1.2;
+}
+
+/* Column classes - Font konsisten untuk semua header */
+.col-no, .col-waktu, .col-pelanggan, .col-ip, 
+.col-device, .col-rule, .col-metric, .col-status {
+    font-size: 9pt;
+    font-weight: bold;
+    font-family: 'DejaVu Sans', Arial, sans-serif;
+}
+```
+
+#### Verifikasi
+
+| Check                          | Hasil                                                |
+| ------------------------------ | ---------------------------------------------------- |
+| **Font size thead**            | Semua kolom 9pt (konsisten)                          |
+| **Font weight thead**          | Semua kolom bold (konsisten)                         |
+| **Font family thead**          | Semua kolom DejaVu Sans (konsisten)                  |
+| **Line height thead**          | 1.2 untuk alignment optimal                          |
+| **Kolom IP body**              | Tetap Courier New monospace (hanya di data content) |
+| **Visual consistency**         | Tidak ada perbedaan style antar kolom header        |
+
+#### Impact
+
+- Risk: **VERY LOW** (hanya perbaikan CSS, tidak mengubah struktur)
+- Benefit: **MEDIUM** (tampilan header table lebih profesional dan konsisten)
+- Breaking Changes: **NONE**
+
+---
+
+## 2026-10-21 (Update #8)
+
+### FITUR BARU: Export to PDF - History Alert
+
+#### Deskripsi Fitur
+
+- Menambahkan fitur export data History Alert ke format PDF untuk keperluan laporan atau dokumentasi.
+- User dapat mengekspor data sesuai filter yang aktif (search, status, date range).
+- Format PDF profesional dengan layout landscape, styling sederhana dan clean, serta informasi lengkap.
+
+#### File yang Dibuat/Diubah
+
+1. **app/Http/Controllers/AlertController.php** - Tambah method `exportPdf()`
+2. **resources/views/alerts/pdf.blade.php** - Template PDF baru (sederhana & profesional)
+3. **routes/web.php** - Tambah route `GET /alerts/export-pdf`
+4. **resources/js/Pages/Alerts/Index.vue** - Tambah button Export PDF dan function handler
+5. **INSTALL-DOMPDF.md** - Dokumentasi instalasi dependency
+
+#### Implementasi Teknis
+
+**A. Controller Method (`AlertController::exportPdf`)**
+
+- Menerima parameter filter dari request: `search`, `status`, `date_from`, `date_to`
+- Default filter: hanya hari ini jika tidak ada filter tanggal
+- Query data AlertLog dengan filter yang sama seperti method `index()`
+- Limit maksimal 1000 data untuk performa PDF generation
+- Generate nama file dinamis: `report-gangguan-DD-MM-YYYY-to-DD-MM-YYYY.pdf`
+- Menggunakan library `barryvdh/laravel-dompdf` untuk generate PDF
+- Paper size: A4 Landscape (agar semua kolom muat)
+- Margin: 10mm untuk semua sisi
+
+**B. Template PDF (`alerts/pdf.blade.php`) - Design Sederhana & Profesional**
+
+**Header:**
+- Judul: "SIWA NETWORK" (16pt, bold, hitam)
+- Subtitle: "Report History Alert Gangguan Jaringan" (10pt, abu-abu)
+- Metadata: Waktu generate (8pt, abu-abu muda)
+- Border bottom: 2px solid hitam (clean & simple)
+
+**Info Section:**
+- Single line format: "Periode: DD/MM/YYYY s/d DD/MM/YYYY | Total: X data"
+- Kondisional: filter search dan status ditampilkan jika aktif
+- Border left accent: 3px solid hitam
+- Font size: 8pt untuk info detail
+
+**Tabel Data:**
+- Header background: solid hitam (#333) dengan text putih
+- Font header: 9pt (konsisten, tidak terlalu kecil/besar)
+- Font body: 8pt untuk readability optimal
+- Zebra striping: abu-abu muda (#f9f9f9) dan putih bergantian
+- Border: 1px solid abu-abu muda (#ddd)
+- Padding cell: 5-7px (tidak terlalu rapat/longgar)
+
+**Kolom:**
+- No, Waktu, Pelanggan, IP Address, Merk Device, Rule (Code + Nama), Metric, Status
+- Badge minimalis: border-radius 3px (tidak terlalu rounded)
+- Badge code: background hitam, monospace font
+- Badge status: hijau (sent), merah (failed), kuning (pending)
+
+**Footer:**
+- Text center: "SIWA NETWORK - Sistem Monitoring Gangguan Jaringan"
+- Page number: "X / Y" format (sederhana)
+- Font size: 7pt, abu-abu muda
+- Border top: 1px solid abu-abu muda
+
+**Color Scheme (Minimalis):**
+- Primary: Hitam (#333) untuk header dan accent
+- Text: Hitam (#333) untuk konten utama
+- Text muted: Abu-abu (#666, #999) untuk secondary info
+- Background: Putih dan abu-abu muda (#f9f9f9) untuk zebra
+- Success: Hijau (#28a745)
+- Danger: Merah (#dc3545)
+- Warning: Kuning (#ffc107)
+
+**Typography:**
+- Font family: DejaVu Sans (support UTF-8)
+- Heading: 16pt, 10pt (sederhana, tidak berlebihan)
+- Table header: 9pt (konsisten)
+- Table body: 8pt
+- Metadata: 7-8pt
+- Badge: 7pt
+
+**C. Route Baru**
+
+```php
+Route::get('/alerts/export-pdf', [AlertController::class, 'exportPdf'])->name('alerts.export-pdf');
+```
+
+**D. Vue Component Update**
+
+- Tambah function `exportPdf()` yang build query string dari filter aktif
+- Redirect ke route export PDF dengan parameter filter
+- Tambah button "Export PDF" di sebelah button Reset
+
+#### Requirement yang Diimplementasikan
+
+1. **Layout PDF:** A4 Landscape (sesuai request)
+2. **Limit Data:** Maksimal 1000 data per export (sesuai request)
+3. **Filter Default:** Hanya hari ini jika tidak ada filter tanggal (sesuai request)
+4. **Filename Format:** `report-gangguan-DD-MM-YYYY-to-DD-MM-YYYY.pdf` (sesuai request)
+5. **Header:** "SIWA NETWORK" tanpa logo (sesuai request)
+6. **Kolom Detail:** No, Waktu, Pelanggan, IP, Merk Device, Code dan Nama Rule, Metric yang match (sesuai request)
+7. **Styling:** Sederhana namun tetap profesional (sesuai request revisi)
+8. **Font Konsisten:** Header table 9pt, body 8pt (sesuai request revisi)
+
+#### Dependency Baru
+
+**Composer Package:**
+```bash
+composer require barryvdh/laravel-dompdf
+```
+
+Library ini perlu diinstall sebelum fitur dapat digunakan. Jika belum terinstall, akan muncul error `Class 'Barryvdh\DomPDF\Facade\Pdf' not found`.
+
+#### Cara Penggunaan
+
+1. User buka halaman `/alerts`
+2. (Opsional) Set filter: search, status, date range
+3. Klik button "Export PDF"
+4. Browser otomatis download file PDF dengan nama sesuai periode
+5. PDF berisi data alert sesuai filter yang aktif
+
+#### Contoh Filename
+
+- Tanggal dari 01/10/2026 ke 21/10/2026: `report-gangguan-01-10-2026-to-21-10-2026.pdf`
+- Hari ini (default): `report-gangguan-21-10-2026-to-21-10-2026.pdf`
+- Custom range: `report-gangguan-15-09-2026-to-30-09-2026.pdf`
+
+#### Verifikasi
+
+| Check                          | Hasil                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| **Route terdaftar**            | `GET /alerts/export-pdf` → `alerts.export-pdf`                             |
+| **Button tampil**              | Button "Export PDF" muncul di sebelah button Reset                         |
+| **PDF generate**               | File PDF berhasil di-download dengan nama sesuai format                    |
+| **Filter berfungsi**           | Data di PDF sesuai dengan filter yang aktif di web                         |
+| **Layout landscape**           | PDF dalam orientasi landscape, semua kolom muat                            |
+| **Styling sederhana**          | Design clean, minimal, profesional tanpa warna berlebihan                  |
+| **Font konsisten**             | Header table 9pt, body 8pt, metadata 7-8pt                                 |
+| **Max 1000 data**              | Jika data lebih dari 1000, hanya 1000 data terbaru yang di-export         |
+| **Default hari ini**           | Tanpa filter tanggal, hanya export alert hari ini                          |
+| **Page numbering**             | Footer menampilkan "X / Y" format sederhana                                |
+| **Timezone WIB**               | Semua waktu di PDF dalam timezone Asia/Jakarta (WIB)                       |
+
+#### Impact
+
+- Risk: **LOW** (fitur baru, tidak mengubah existing logic)
+- Benefit: **HIGH** (user dapat membuat laporan gangguan dalam format PDF profesional)
+- Performance: **MEDIUM** (PDF generation bisa lambat untuk data 500+ rows, sudah di-limit 1000)
+- Breaking Changes: **NONE**
+
+#### Catatan Tambahan
+
+- PDF menggunakan font DejaVu Sans yang sudah terinstall di DomPDF untuk support karakter Indonesia
+- Jika data kosong (tidak ada alert sesuai filter), PDF tetap di-generate dengan pesan "Tidak ada data alert untuk periode yang dipilih"
+- Metric hanya menampilkan yang match dengan rule (bandwidth, latency, packet_loss yang tidak null)
+- Filename menggunakan format DD-MM-YYYY agar mudah dibaca dan sort by name
+- Query menggunakan `latest('detected_at')` sehingga data di-export dari terbaru ke terlama
+- Design menggunakan prinsip minimalis: hitam-putih-abu dengan accent warna hanya pada badge status
+- Typography konsisten di seluruh dokumen untuk profesionalitas
+- Border dan spacing optimal untuk readability tanpa terlihat ramai
+
+---
+
+## 2026-10-21 (Update #7)
+
+### PERBAIKAN BUG: History Alert - Kolom Waktu Tidak Muncul
+
+#### Deskripsi Bug
+
+- Pada halaman History Alert (/alerts), kolom "Waktu" tidak menampilkan tanggal dan jam.
+- Kolom waktu seharusnya menampilkan format "18/10/2026 22:45" tetapi hanya tampil kosong atau undefined.
+- User tidak bisa melihat kapan alert dikirim atau kapan gangguan terdeteksi.
+
+#### Root Cause
+
+**Accessor Tidak Di-Serialize ke JSON Response**
+
+- Model `AlertLog` memiliki 2 accessor yang sudah berfungsi dengan baik di PHP:
+    - `getDetectedAtFormattedAttribute()` - format lengkap: "Jumat, 18 Oktober 2026 | 22:45:30 WIB"
+    - `getSentAtFormattedAttribute()` - format sederhana: "18/10/2026 22:45"
+- **TETAPI** Laravel Eloquent tidak otomatis meng-append accessor ke JSON response kecuali explicitly di-define di `protected $appends`.
+- Tanpa `$appends`, JSON response hanya include kolom database (`detected_at`, `sent_at`), tidak include computed accessor.
+- Vue `Index.vue` mencoba akses `log.sent_at_formatted` dan `log.detected_at_formatted` (baris 459, 560-561) → **undefined**.
+- Hasil: kolom waktu tidak tampil di tabel History Alert.
+
+#### File yang Diperbaiki
+
+1. **app/Models/AlertLog.php** (baris 48-54)
+
+#### Perubahan Teknis
+
+**Tambah `protected $appends` di Model AlertLog**
+
+- **Sebelum**:
+
+    ```php
+    protected $casts = [
+        'detected_at' => 'datetime',
+        'sent_at' => 'datetime',
+        'rule_conditions' => 'array',
+        'bandwidth_actual' => 'decimal:2',
+        'latency_actual' => 'decimal:2',
+        'packet_loss_actual' => 'decimal:2',
+        'retry_count' => 'integer',
+    ];
+
+    // Langsung ke relasi method, tidak ada $appends
+    public function device() { ... }
+    ```
+
+    - Accessor hanya tersedia di PHP, tidak di-serialize ke JSON
+    - Inertia response tidak include `detected_at_formatted` dan `sent_at_formatted`
+    - Vue akses `log.sent_at_formatted` → `undefined`
+
+- **Sesudah**:
+
+    ```php
+    protected $casts = [
+        'detected_at' => 'datetime',
+        'sent_at' => 'datetime',
+        'rule_conditions' => 'array',
+        'bandwidth_actual' => 'decimal:2',
+        'latency_actual' => 'decimal:2',
+        'packet_loss_actual' => 'decimal:2',
+        'retry_count' => 'integer',
+    ];
+
+    // Append accessor ke JSON response agar Vue bisa akses detected_at_formatted dan sent_at_formatted.
+    // Tanpa $appends, accessor hanya tersedia di PHP, tidak di-serialize ke JSON untuk Inertia.
+    // Bug fix: kolom waktu di History Alert tidak muncul karena accessor tidak ter-include di response.
+    protected $appends = [
+        'detected_at_formatted',
+        'sent_at_formatted',
+    ];
+
+    public function device() { ... }
+    ```
+
+    - Accessor otomatis di-append ke setiap JSON serialization
+    - Inertia response include `detected_at_formatted: "18/10/2026 22:45"` dan `sent_at_formatted: "18/10/2026 22:45"`
+    - Vue bisa akses `log.sent_at_formatted` dan `log.detected_at_formatted` dengan normal
+
+#### Komentar Penjelasan yang Ditambahkan
+
+- Komentar menjelaskan kenapa `$appends` diperlukan untuk Inertia/JSON response
+- Komentar menjelaskan dampak jika tidak ada `$appends` (accessor tidak ter-include)
+- Komentar sebagai bug fix documentation untuk future reference
+
+#### Verifikasi
+
+| Check                   | Hasil                                                                      |
+| ----------------------- | -------------------------------------------------------------------------- |
+| **Halaman Alerts Index** | Kolom Waktu sekarang tampil lengkap dengan tanggal dan jam                  |
+| **Format Waktu Tabel**   | Tampil format sederhana: "18/10/2026 22:45" (sebelumnya: kosong/undefined) |
+| **Format Waktu Modal**   | Tampil format lengkap: "Jumat, 18 Oktober 2026 | 22:45:30 WIB"             |
+| **JSON Response**        | Include `detected_at_formatted` dan `sent_at_formatted` properties          |
+
+#### Display Comparison
+
+**Sebelum Fix:**
+
+```
+Kolom Waktu: (kosong)                    ❌ (tidak ada keterangan tanggal/jam)
+Modal Detail Waktu Deteksi: (kosong)     ❌ (accessor tidak ter-serialize)
+Modal Detail Waktu Terkirim: (kosong)    ❌ (accessor tidak ter-serialize)
+```
+
+**Sesudah Fix:**
+
+```
+Kolom Waktu: 21/10/2026 17:25           ✅ (tampil format sederhana)
+Modal Detail Waktu Deteksi: Senin, 21 Oktober 2026 | 17:25:30 WIB  ✅ (format lengkap)
+Modal Detail Waktu Terkirim: 21/10/2026 17:25                      ✅ (format sederhana)
+```
+
+#### Impact
+
+- Risk: **VERY LOW** (hanya menambah property ke JSON, tidak mengubah business logic)
+- Benefit: **HIGH** (kolom waktu menjadi informatif, user bisa melihat kapan alert dikirim)
+- Breaking Changes: **NONE** (backward compatible, property tambahan tidak break existing code)
+- Performance: **MINIMAL** (accessor sudah di-cache oleh Eloquent, overhead negligible)
+
+#### Catatan Tambahan
+
+- Bug ini sama dengan bug yang sudah diperbaiki pada `RuleCondition` model di Update #3 (2026-09-01)
+- Pola bug: accessor defined tapi tidak di-append, sehingga Vue tidak bisa akses computed property
+- Solusi standar: selalu tambahkan `protected $appends` jika accessor digunakan untuk JSON/Inertia response
+- Timezone sudah di-set ke `Asia/Jakarta` (WIB) di accessor untuk konsistensi dengan requirement sistem
+
+---
+
+## 2026-09-03 (Update #6)
+
+### FIX KRITIS: Web Modul Log Gangguan Blank Putih (Vue Template Crash)
+
+#### Root Cause
+
+- Di template `IssueLogs/Index.vue`, kondisi `v-if` untuk label threshold salah:
+    ```vue
+    v-if="log.matched_metrics?.latency && log.thresholds?.latency?.value !==
+    null"
+    ```
+- Ketika `log.thresholds.latency` adalah `null` (tidak ada kondisi rule untuk parameter ini):
+    - `log.thresholds?.latency?.value` → `undefined`
+    - `undefined !== null` → **`true`** (bug!)
+    - Akibatnya: Vue mencoba akses `log.thresholds.latency.operator` → `null.operator` → **CRASH**
+- Crash ini menyebabkan seluruh komponen Vue gagal render → halaman putih.
+
+#### File yang Diperbaiki
+
+1. **resources/js/Pages/IssueLogs/Index.vue** (kolom metrics template)
+
+#### Perubahan Teknis
+
+- Ganti kondisi `v-if` agar memastikan objek threshold **itu sendiri** ada, bukan hanya nilai di dalamnya.
+
+**Sebelum (bug):**
+
+```vue
+<span
+    v-if="
+        log.matched_metrics?.bandwidth &&
+        log.thresholds?.bandwidth?.value !== null
+    "
+> 
+  (threshold: {{ log.thresholds.bandwidth.operator }}{{ log.thresholds.bandwidth.value }})
+</span>
+<!-- (sama untuk latency dan packet_loss) -->
+```
+
+**Sesudah (fixed):**
+
+```vue
+<span v-if="log.matched_metrics?.bandwidth && log.thresholds?.bandwidth"> 
+  (threshold: {{ log.thresholds.bandwidth.operator }}{{ log.thresholds.bandwidth.value }})
+</span>
+<!-- (sama untuk latency dan packet_loss) -->
+```
+
+Logika:
+
+- `log.thresholds?.bandwidth` ketika `null` → falsy → `v-if = false` → tidak crash ✅
+- `log.thresholds?.bandwidth` ketika ada object `{value:5, operator:'<'}` → truthy → `v-if = true` → tampil benar ✅
+
+#### Impact
+
+- Risk: **VERY LOW** (hanya perbaikan kondisi `v-if`)
+- UX: **HIGH** (halaman kembali bisa diakses)
+- Code Complexity: **MINIMAL** (hapus `?.value !== null`, ganti dengan cek objek langsung)
+- Breaking Changes: **NONE**
+
+#### Verification
+
+| Check              | Hasil                                                     |
+| ------------------ | --------------------------------------------------------- |
+| `npm run build`    | ✅ Success (23.90s)                                       |
+| `php artisan test` | ✅ 2 passed (11 assertions)                               |
+| Browser console    | ✅ No more `TypeError`, no blank page                     |
+| UI tampak          | ✅ Kembali normal, metrics + threshold tampil sesuai rule |
+
+---
+
 ## 2026-09-01 (Update #5)
 
-### PERBAIKAN ISSUE #5 (Lanjutan): Validasi Duplicate Parameters pada Kondisi Rule
-
 #### Deskripsi Issue
-- Pada modul Rule Forward Chaining, user bisa menambahkan 2+ kondisi dengan parameter yang **SAMAKI** dalam 1 rule.
+
+- Pada modul Rule Forward Chaining, user bisa menambahkan 2+ kondisi dengan parameter yang **SAMA** dalam 1 rule.
 - Contoh: 2 kondisi dengan parameter `bandwidth` (misal: `> 100` dan `< 50`) - ini redundancy/confusion.
 - Requirement: Setiap parameter hanya boleh muncul maksimal 1 kali dalam 1 rule.
 - Note: Berbeda rule dengan parameter yang sama di-bolehkan (misal: R01 punya bandwidth, R02 punya bandwidth).
 
 #### Root Cause
+
 - Tidak ada validasi untuk mencegah duplicate parameters dalam 1 rule.
 - Form Vue hanya mencegah duplicate parameter melalui UI (dropdown bisa dipilih berulang).
 
 #### File yang Diperbaiki
+
 1. **app/Http/Controllers/RuleController.php**
-   - Tambah method `validateDuplicateParameters()` (private)
-   - Tambah validasi di `store()` method
-   - Tambah validasi di `update()` method
+    - Tambah method `validateDuplicateParameters()` (private)
+    - Tambah validasi di `store()` method
+    - Tambah validasi di `update()` method
 
 #### Perubahan Teknis
 
 **Method baru: `validateDuplicateParameters(array $conditions): ?array`**
+
 - Group conditions by parameter dan count occurrences
 - Jika ada parameter dengan count > 1 → return error message
 - Example error message: "Setiap parameter hanya boleh muncul maksimal 1 kali dalam rule yang sama. Parameter berulang: Bandwidth (2x)"
 
 **Integrasi di `store()` method (setelah validasi Laravel):**
+
 ```php
 // Validasi duplicate parameters (hanya boleh 1 kondisi per parameter)
 $duplicateError = $this->validateDuplicateParameters($validated['conditions']);
@@ -35,17 +558,20 @@ if ($duplicateError) {
 ```
 
 **Integrasi di `update()` method (setelah validasi Laravel):**
+
 - Identik dengan store() - sama logic
 
 #### Validation Flow (Setelah Fix)
 
 **Backend Validation Order:**
+
 1. Laravel Request Validation (required, enum, numeric, exists, dll)
 2. Duplicate Parameters Validation (baru!)
 3. Logical Contradiction Validation (sudah ada dari Update #4)
 4. Database Transaction (save rule + conditions)
 
 **Frontend UX:**
+
 - User tidak bisa submit form dengan duplicate parameters
 - Error message muncul di atas form: "Setiap parameter hanya boleh muncul maksimal 1 kali..."
 - Form otomatis tetap terbuka dengan data yang sudah diisi (via `->withInput()`)
@@ -53,6 +579,7 @@ if ($duplicateError) {
 #### Contoh Validasi
 
 **✅ VALID** (setiap parameter 1x):
+
 ```
 Kondisi 1: bandwidth > 100 Mbps
 Kondisi 2: latency > 50 ms
@@ -61,12 +588,14 @@ Kondisi 3: packet_loss > 5 %
 ```
 
 **✅ VALID** (1 parameter):
+
 ```
 Kondisi 1: latency > 50 ms
 → ACCEPTED (hanya 1 kondisi)
 ```
 
 **❌ INVALID** (duplicate parameter):
+
 ```
 Kondisi 1: bandwidth > 100 Mbps
 Kondisi 2: bandwidth < 50 Mbps
@@ -74,6 +603,7 @@ Kondisi 2: bandwidth < 50 Mbps
 ```
 
 **❌ INVALID** (triple duplicate):
+
 ```
 Kondisi 1: packet_loss = 5 %
 Kondisi 2: packet_loss > 3 %
@@ -82,16 +612,18 @@ Kondisi 3: packet_loss > 10 %
 ```
 
 #### Verifikasi
-| Check | Hasil |
-|-------|-------|
-| `php -l` (RuleController.php) | ✅ No syntax errors |
-| `php artisan test` | ✅ 2 passed (11 assertions), no regression |
-| Form Create - Duplicate Parameter | ✅ Error message muncul |
-| Form Edit - Duplicate Parameter | ✅ Error message muncul |
-| Form Create - No Duplicate | ✅ Rule berhasil disimpan |
-| Form Edit - No Duplicate | ✅ Rule berhasil diupdate |
+
+| Check                             | Hasil                                      |
+| --------------------------------- | ------------------------------------------ |
+| `php -l` (RuleController.php)     | ✅ No syntax errors                        |
+| `php artisan test`                | ✅ 2 passed (11 assertions), no regression |
+| Form Create - Duplicate Parameter | ✅ Error message muncul                    |
+| Form Edit - Duplicate Parameter   | ✅ Error message muncul                    |
+| Form Create - No Duplicate        | ✅ Rule berhasil disimpan                  |
+| Form Edit - No Duplicate          | ✅ Rule berhasil diupdate                  |
 
 #### Impact
+
 - Risk: **LOW** (hanya tambah validation, tidak ubah logic existing)
 - Data Integrity: **HIGH** (prevent duplicate parameters)
 - UX: **HIGH** (informative error message, form tetap terbuka)
@@ -101,6 +633,7 @@ Kondisi 3: packet_loss > 10 %
 #### Testing Manual
 
 **Test Case 1: Duplicate Parameter Rejection**
+
 ```
 Steps:
 1. Buka /rules/create
@@ -116,6 +649,7 @@ Expected:
 ```
 
 **Test Case 2: No Duplicate Acceptance**
+
 ```
 Steps:
 1. Buka /rules/create
@@ -132,6 +666,7 @@ Expected:
 ```
 
 #### Catatan Tambahan
+
 - Duplicate parameter validation diimplementasikan **SEBELUM** logical contradiction validation.
 - Urutan validasi: Laravel validation → Duplicate check → Contradiction check → Save.
 - Error message menggunakan parameter label yang user-friendly (Bandwidth, Latency, Packet Loss).
@@ -144,19 +679,22 @@ Expected:
 ### PERBAIKAN ISSUE #5: Rule Forward Chaining - Validasi Logical Contradiction pada Kondisi
 
 #### Deskripsi Issue
+
 - User bisa membuat kondisi rule yang **bertentangan secara logika**, sehingga rule **TIDAK AKAN PERNAH MATCH**.
 - Contoh contradiction:
-  - `bandwidth > 100 Mbps AND bandwidth < 50 Mbps` (tidak ada nilai yang satisfy kedua kondisi)
-  - `latency = 50 ms AND latency > 50 ms` (nilai tidak bisa equal dan greater bersamaan)
-  - `packet_loss = 5% AND packet_loss = 10%` (tidak bisa 5 dan 10 bersamaan)
+    - `bandwidth > 100 Mbps AND bandwidth < 50 Mbps` (tidak ada nilai yang satisfy kedua kondisi)
+    - `latency = 50 ms AND latency > 50 ms` (nilai tidak bisa equal dan greater bersamaan)
+    - `packet_loss = 5% AND packet_loss = 10%` (tidak bisa 5 dan 10 bersamaan)
 - Dampak: Rule dibuat user tapi tidak pernah trigger, user bingung kenapa rule tidak bekerja, resource terbuang sia-sia.
 
 #### Root Cause
+
 - Tidak ada validasi saat create/edit rule untuk mendeteksi logical contradiction pada kondisi.
 - Backend hanya validasi basic (required, enum values, numeric), tidak ada business logic validation.
 - User bisa submit form dengan kondisi yang impossible secara logika.
 
 #### File yang Diperbaiki
+
 1. **app/Http/Controllers/RuleController.php** (tambah 2 private methods + validasi di store & update)
 
 #### Perubahan Teknis
@@ -164,21 +702,24 @@ Expected:
 **Tambah 2 Helper Methods:**
 
 **Method 1: `validateLogicalContradiction(array $conditions): ?array`**
+
 - Group conditions by parameter
 - Check setiap kombinasi kondisi pada parameter yang sama
 - Return error message jika ditemukan contradiction, null jika valid
 - ~50 lines, well-documented
 
 **Method 2: `checkContradiction(array $cond1, array $cond2, string $parameter): ?string`**
+
 - Implementasi 4 rule deteksi contradiction:
-  1. **Opposite Range**: `> A AND < B` (hanya valid jika A < B)
-  2. **Equality dengan Greater**: `= A AND > B` (hanya valid jika A > B)
-  3. **Equality dengan Less**: `= A AND < B` (hanya valid jika A < B)
-  4. **Multiple Equality**: `= A AND = B` (hanya valid jika A == B)
+    1. **Opposite Range**: `> A AND < B` (hanya valid jika A < B)
+    2. **Equality dengan Greater**: `= A AND > B` (hanya valid jika A > B)
+    3. **Equality dengan Less**: `= A AND < B` (hanya valid jika A < B)
+    4. **Multiple Equality**: `= A AND = B` (hanya valid jika A == B)
 - Error message yang informatif dengan unit dan parameter label
 - ~100 lines, well-commented
 
 **Validasi di method `store()` (baris ~182):**
+
 ```php
 $contradictionError = $this->validateLogicalContradiction($validated['conditions']);
 if ($contradictionError) {
@@ -187,6 +728,7 @@ if ($contradictionError) {
 ```
 
 **Validasi di method `update()` (baris ~267):**
+
 ```php
 $contradictionError = $this->validateLogicalContradiction($validated['conditions']);
 if ($contradictionError) {
@@ -196,18 +738,19 @@ if ($contradictionError) {
 
 #### Deteksi Contradiction Matrix
 
-| Operator 1 | Operator 2 | Valid? | Keterangan |
-|------------|------------|--------|------------|
-| `>` | `<` | ⚠️ DEPENDS | Valid jika val1 < val2 (range check) |
-| `=` | `>` | ❌ INVALID | Val tidak bisa equal dan greater |
-| `=` | `<` | ❌ INVALID | Val tidak bisa equal dan less |
-| `=` | `=` | ⚠️ DEPENDS | Valid hanya jika value sama |
-| `>` | `>` | ✅ VALID | Redundant tapi valid |
-| `<` | `<` | ✅ VALID | Redundant tapi valid |
+| Operator 1 | Operator 2 | Valid?     | Keterangan                           |
+| ---------- | ---------- | ---------- | ------------------------------------ |
+| `>`        | `<`        | ⚠️ DEPENDS | Valid jika val1 < val2 (range check) |
+| `=`        | `>`        | ❌ INVALID | Val tidak bisa equal dan greater     |
+| `=`        | `<`        | ❌ INVALID | Val tidak bisa equal dan less        |
+| `=`        | `=`        | ⚠️ DEPENDS | Valid hanya jika value sama          |
+| `>`        | `>`        | ✅ VALID   | Redundant tapi valid                 |
+| `<`        | `<`        | ✅ VALID   | Redundant tapi valid                 |
 
 #### Contoh Error Message
 
 **Saat user buat rule dengan contradiction:**
+
 ```
 Input:
 - Kondisi 1: bandwidth > 100 Mbps
@@ -220,6 +763,7 @@ Error yang ditampilkan:
 #### Display Comparison
 
 **Sebelum Fix:**
+
 ```
 User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 ✅ Form submit berhasil (tidak ada warning)
@@ -228,6 +772,7 @@ User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 ```
 
 **Sesudah Fix:**
+
 ```
 User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 ❌ Form submit REJECTED dengan error message
@@ -237,18 +782,20 @@ User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 ```
 
 #### Verifikasi
-| Check | Hasil |
-|-------|-------|
-| `php -l` (RuleController.php) | ✅ No syntax errors |
-| `php artisan test` | ✅ 2 passed (11 assertions), no regression |
-| Test Case: Opposite Range Contradiction | ✅ bandwidth > 100 AND < 50 → ERROR |
-| Test Case: Valid Range | ✅ bandwidth > 50 AND < 100 → OK |
-| Test Case: Equality with Greater | ✅ latency = 50 AND > 50 → ERROR |
-| Test Case: Different Equality | ✅ packet_loss = 5 AND = 10 → ERROR |
-| Test Case: Different Parameters | ✅ bandwidth > 100 AND latency > 50 → OK |
-| Test Case: Boundary Values | ✅ bandwidth >= 100 AND <= 100 → OK (valid) |
+
+| Check                                   | Hasil                                       |
+| --------------------------------------- | ------------------------------------------- |
+| `php -l` (RuleController.php)           | ✅ No syntax errors                         |
+| `php artisan test`                      | ✅ 2 passed (11 assertions), no regression  |
+| Test Case: Opposite Range Contradiction | ✅ bandwidth > 100 AND < 50 → ERROR         |
+| Test Case: Valid Range                  | ✅ bandwidth > 50 AND < 100 → OK            |
+| Test Case: Equality with Greater        | ✅ latency = 50 AND > 50 → ERROR            |
+| Test Case: Different Equality           | ✅ packet_loss = 5 AND = 10 → ERROR         |
+| Test Case: Different Parameters         | ✅ bandwidth > 100 AND latency > 50 → OK    |
+| Test Case: Boundary Values              | ✅ bandwidth >= 100 AND <= 100 → OK (valid) |
 
 #### Impact
+
 - Risk: **VERY LOW** (hanya tambah validasi, tidak mengubah existing logic)
 - Data Integrity: **HIGH** (prevent impossible rules dari disimpan)
 - UX: **HIGH** (user dapat feedback immediate saat create/edit)
@@ -257,6 +804,7 @@ User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 - Breaking Changes: **NONE** (rules existing tidak terpengaruh)
 
 #### Catatan Tambahan
+
 - Validasi berjalan di backend sebelum save ke database
 - Rules yang sudah ada di database (mungkin ada yang bertentangan) tidak divalidasi ulang, dibiarkan as-is
 - Error message mencakup unit (Mbps, ms, %) dan parameter label yang user-friendly
@@ -269,12 +817,15 @@ User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 ### PERBAIKAN BUG: Rule Forward Chaining - Unit & Parameter Label Tidak Muncul di Kondisi Rule
 
 #### Deskripsi Bug
+
 - Pada halaman list rule (/rules), kolom "Kondisi" hanya menampilkan nilai numerik tanpa satuan dan label parameter.
 - User melaporkan: kondisi rule hanya tampil "latency > 10" tanpa unit "ms", seharusnya "Latency > 10 ms".
 - Dampak: User kesulitan memahami kondisi rule karena tidak ada informasi tentang satuan (Mbps, ms, %) dan parameter tidak user-friendly (lowercase).
 
 #### Root Cause
+
 **Accessor Tidak Di-Serialize ke JSON Response**
+
 - Model `RuleCondition` memiliki accessor `getUnitAttribute()` dan `getParameterLabelAttribute()` yang berfungsi dengan baik di PHP.
 - **TETAPI** Laravel Eloquent **tidak otomatis meng-append accessor** ke JSON response kecuali explicitly di-define di `protected $appends`.
 - Tanpa `$appends`, JSON response hanya include kolom database (`parameter`, `operator`, `value`), tidak include computed accessor.
@@ -282,59 +833,68 @@ User buat rule dengan: bandwidth > 100 AND bandwidth < 50
 - Hasil: kondisi tampil tanpa satuan dan label yang proper.
 
 #### File yang Diperbaiki
+
 1. **app/Models/RuleCondition.php** (baris 25-32)
 
 #### Perubahan Teknis
 
 **Tambah `protected $appends` di Model RuleCondition**
-- **Sebelum**: 
-  ```php
-  protected $casts = [
-      'value' => 'decimal:2',
-  ];
-  
-  // Langsung ke relasi method, tidak ada $appends
-  public function rule() { ... }
-  ```
-  - Accessor hanya tersedia di PHP, tidak di-serialize ke JSON
-  - Inertia response tidak include `unit` dan `parameter_label`
-  - Vue akses `cond.unit` → `undefined`
-  
+
+- **Sebelum**:
+
+    ```php
+    protected $casts = [
+        'value' => 'decimal:2',
+    ];
+
+    // Langsung ke relasi method, tidak ada $appends
+    public function rule() { ... }
+    ```
+
+    - Accessor hanya tersedia di PHP, tidak di-serialize ke JSON
+    - Inertia response tidak include `unit` dan `parameter_label`
+    - Vue akses `cond.unit` → `undefined`
+
 - **Sesudah**:
-  ```php
-  protected $casts = [
-      'value' => 'decimal:2',
-  ];
-  
-  // Append accessor ke JSON response agar Vue bisa akses unit dan parameter_label.
-  // Tanpa $appends, accessor hanya tersedia di PHP, tidak di-serialize ke JSON.
-  protected $appends = [
-      'unit',
-      'parameter_label',
-  ];
-  
-  public function rule() { ... }
-  ```
-  - Accessor otomatis di-append ke setiap JSON serialization
-  - Inertia response include `unit: "ms"` dan `parameter_label: "Latency"`
-  - Vue bisa akses `cond.unit` dan `cond.parameter_label` dengan normal
+
+    ```php
+    protected $casts = [
+        'value' => 'decimal:2',
+    ];
+
+    // Append accessor ke JSON response agar Vue bisa akses unit dan parameter_label.
+    // Tanpa $appends, accessor hanya tersedia di PHP, tidak di-serialize ke JSON.
+    protected $appends = [
+        'unit',
+        'parameter_label',
+    ];
+
+    public function rule() { ... }
+    ```
+
+    - Accessor otomatis di-append ke setiap JSON serialization
+    - Inertia response include `unit: "ms"` dan `parameter_label: "Latency"`
+    - Vue bisa akses `cond.unit` dan `cond.parameter_label` dengan normal
 
 #### Komentar Penjelasan yang Ditambahkan
+
 - Komentar menjelaskan kenapa `$appends` diperlukan untuk Inertia/JSON response
 - Komentar menjelaskan dampak jika tidak ada `$appends` (accessor tidak ter-include)
 - Komentar sebagai bug fix documentation untuk future reference
 
 #### Verifikasi
-| Check | Hasil |
-|-------|-------|
-| **Debug Command** | ✅ JSON response include `"unit": "ms"` dan `"parameter_label": "Latency"` |
-| `php artisan test` | ✅ 2 passed (11 assertions) |
-| **Halaman Rules Index** | ✅ Kondisi tampil lengkap: "Latency > 10 ms" (sebelumnya: "latency > 10") |
-| **Multiple Parameters** | ✅ "Bandwidth > 100 Mbps AND Latency > 50 ms AND Packet Loss > 5 %" |
+
+| Check                   | Hasil                                                                      |
+| ----------------------- | -------------------------------------------------------------------------- |
+| **Debug Command**       | ✅ JSON response include `"unit": "ms"` dan `"parameter_label": "Latency"` |
+| `php artisan test`      | ✅ 2 passed (11 assertions)                                                |
+| **Halaman Rules Index** | ✅ Kondisi tampil lengkap: "Latency > 10 ms" (sebelumnya: "latency > 10")  |
+| **Multiple Parameters** | ✅ "Bandwidth > 100 Mbps AND Latency > 50 ms AND Packet Loss > 5 %"        |
 
 #### Display Comparison
 
 **Sebelum Fix:**
+
 ```
 Kondisi: latency > 10          ❌ (tidak ada unit, parameter lowercase)
 Kondisi: bandwidth > 100       ❌ (tidak ada unit Mbps)
@@ -342,6 +902,7 @@ Kondisi: packet_loss > 5       ❌ (tidak ada unit %, underscore tidak friendly)
 ```
 
 **Sesudah Fix:**
+
 ```
 Kondisi: Latency > 10 ms       ✅ (ada unit, parameter capitalized)
 Kondisi: Bandwidth > 100 Mbps  ✅ (ada unit Mbps)
@@ -349,6 +910,7 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 ```
 
 #### Impact
+
 - Risk: **VERY LOW** (hanya menambah property ke JSON, tidak mengubah business logic)
 - Benefit: **HIGH** (readability & UX meningkat signifikan, informasi lebih jelas)
 - Breaking Changes: **NONE** (backward compatible, property tambahan tidak break existing code)
@@ -361,16 +923,19 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 ### PERBAIKAN BUG: Rule Forward Chaining - "Device Telah Dihapus" Muncul Padahal Device Masih Ada
 
 #### Deskripsi Bug
+
 - Pada halaman list rule (/rules), kolom "Target Device" menampilkan badge merah "Device telah dihapus" untuk semua rule dengan target_type = 'specific', padahal device masih ada di database dan belum dihapus.
 - User melaporkan: setelah membuat rule baru dengan specific device, rule berhasil tersimpan (ada pesan sukses), tetapi di tabel list rule muncul "Device telah dihapus".
 - Verifikasi menunjukkan: form edit rule dapat menampilkan device dengan benar di dropdown, membuktikan data tersimpan dengan benar dan relasi berfungsi.
 
 #### Root Cause
+
 1. **Type Mismatch (Preventive Fix)**: HTML `<option value="...">` selalu mengkonversi value menjadi string, sehingga saat user memilih device dengan id `1`, yang ter-bind adalah string `"1"` bukan number `1`. Meskipun Laravel validasi akan cast ke integer, best practice adalah memastikan type consistency sejak dari frontend.
 2. **Naming Convention Mismatch (Critical Bug)**: Laravel Eloquent mengirim relasi dengan **snake_case** (`target_device`) dalam JSON response, tetapi Vue mengakses dengan **camelCase** (`targetDevice`). Ini menyebabkan `rule.targetDevice` selalu `undefined`, sehingga kondisi fallback ke "Device telah dihapus" meskipun data tersimpan dengan benar di database.
 3. **Display Logic Issue (Additional Fix)**: Kondisi `v-else-if="rule.targetDevice"` di Index.vue terlalu generic dan tidak cukup defensive. Perlu double-check: apakah `target_device_id` ada DAN apakah relasi `target_device` ter-load.
 
 #### File yang Diperbaiki
+
 1. **resources/js/Pages/Rules/Create.vue** (baris 44)
 2. **resources/js/Pages/Rules/Edit.vue** (baris 44)
 3. **resources/js/Pages/Rules/Index.vue** (baris 46-50)
@@ -378,53 +943,67 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 #### Perubahan Teknis
 
 **Perbaikan 1: Type Consistency di Vue Form (Create.vue & Edit.vue)**
+
 - **Sebelum**: `<select v-model="form.target_device_id" :required="...">`
-  - Value dari dropdown adalah string (misal: `"1"`, `"2"`)
-  - Bisa menyebabkan type mismatch antara frontend (string) dan backend (integer)
+    - Value dari dropdown adalah string (misal: `"1"`, `"2"`)
+    - Bisa menyebabkan type mismatch antara frontend (string) dan backend (integer)
 - **Sesudah**: `<select v-model.number="form.target_device_id" :required="...">`
-  - Vue modifier `.number` otomatis cast value ke integer
-  - Memastikan `form.target_device_id` selalu bertype number (misal: `1`, `2`)
-  - Best practice untuk form yang mengirim numeric ID
+    - Vue modifier `.number` otomatis cast value ke integer
+    - Memastikan `form.target_device_id` selalu bertype number (misal: `1`, `2`)
+    - Best practice untuk form yang mengirim numeric ID
 
 **Perbaikan 2: Naming Convention Fix - snake_case vs camelCase (Index.vue)**
-- **Sebelum**: 
-  ```vue
-  <span v-else-if="rule.targetDevice" class="badge">{{ rule.targetDevice.ip_address }}</span>
-  ```
-  - Mengakses relasi dengan camelCase `rule.targetDevice`
-  - **BUG CRITICAL**: Laravel Eloquent mengirim JSON dengan snake_case `target_device`
-  - `rule.targetDevice` selalu `undefined` karena property tidak ada
-  - False positive: selalu fallback ke "Device telah dihapus"
+
+- **Sebelum**:
+
+    ```vue
+    <span
+        v-else-if="rule.targetDevice"
+        class="badge"
+    >{{ rule.targetDevice.ip_address }}</span>
+    ```
+
+    - Mengakses relasi dengan camelCase `rule.targetDevice`
+    - **BUG CRITICAL**: Laravel Eloquent mengirim JSON dengan snake_case `target_device`
+    - `rule.targetDevice` selalu `undefined` karena property tidak ada
+    - False positive: selalu fallback ke "Device telah dihapus"
+
 - **Sesudah**:
-  ```vue
-  <span v-else-if="rule.target_device_id && rule.target_device" class="badge">
-    {{ rule.target_device.ip_address }}
-  </span>
-  ```
-  - Mengakses relasi dengan snake_case `rule.target_device` (sesuai Laravel convention)
-  - Double-check: cek `rule.target_device_id` (apakah ada ID tersimpan) DAN `rule.target_device` (apakah relasi ter-load)
-  - Lebih defensive dan explicit, mencegah false positive
+
+    ```vue
+    <span v-else-if="rule.target_device_id && rule.target_device" class="badge">
+      {{ rule.target_device.ip_address }}
+    </span>
+    ```
+
+    - Mengakses relasi dengan snake_case `rule.target_device` (sesuai Laravel convention)
+    - Double-check: cek `rule.target_device_id` (apakah ada ID tersimpan) DAN `rule.target_device` (apakah relasi ter-load)
+    - Lebih defensive dan explicit, mencegah false positive
 
 #### Komentar Penjelasan yang Ditambahkan
+
 - **Create.vue & Edit.vue**: Komentar menjelaskan fungsi `.number` modifier dan kenapa diperlukan untuk bug prevention
 - **Index.vue**: Komentar menjelaskan logika defensive check, naming convention snake_case Laravel, dan tujuan mencegah false positive "Device telah dihapus"
 
 #### Verifikasi
-| Check | Hasil |
-|-------|-------|
-| `npm run build` | ✅ Success (629 modules, 231.67 kB JS gzip 81.32 kB) |
-| `php artisan test` | ✅ 2 passed (11 assertions) |
-| Form Create - Specific Device | ✅ Rule tersimpan, IP device muncul di list (tidak ada "Device telah dihapus") |
-| Form Edit - Ubah Device | ✅ Perubahan tersimpan dengan benar |
-| Halaman Index - Existing Rules | ✅ Semua rule specific device menampilkan IP address yang benar |
-| Form Create - All Devices (Regression) | ✅ Tidak broken, badge "All Devices" muncul dengan benar |
+
+| Check                                  | Hasil                                                                          |
+| -------------------------------------- | ------------------------------------------------------------------------------ |
+| `npm run build`                        | ✅ Success (629 modules, 231.67 kB JS gzip 81.32 kB)                           |
+| `php artisan test`                     | ✅ 2 passed (11 assertions)                                                    |
+| Form Create - Specific Device          | ✅ Rule tersimpan, IP device muncul di list (tidak ada "Device telah dihapus") |
+| Form Edit - Ubah Device                | ✅ Perubahan tersimpan dengan benar                                            |
+| Halaman Index - Existing Rules         | ✅ Semua rule specific device menampilkan IP address yang benar                |
+| Form Create - All Devices (Regression) | ✅ Tidak broken, badge "All Devices" muncul dengan benar                       |
 
 #### Impact
+
 - Risk: LOW (hanya perubahan type casting dan display logic, tidak mengubah backend atau database)
 - Benefit: HIGH (bug critical yang membuat UI misleading sudah resolved, user tidak bingung lagi)
 - Breaking Changes: NONE (backward compatible, semua fitur existing tetap berfungsi)
 
 #### Catatan Tambahan
+
 - Dropdown "Pilih Device" di form tambah/edit rule sudah benar sejak awal: hanya menampilkan device yang ada di database, device yang dihapus tidak muncul di dropdown.
 - Bug terjadi karena **naming convention mismatch**: Laravel mengirim relasi sebagai `target_device` (snake_case) tetapi Vue mengakses sebagai `targetDevice` (camelCase).
 - **Pembelajaran penting**: Laravel Eloquent secara default mengirim relasi dengan snake_case dalam JSON response. Vue harus mengakses dengan nama yang sama persis, tidak boleh diubah ke camelCase.
@@ -438,23 +1017,27 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 ### PERBAIKAN BUG: Rule Forward Chaining - Form "All Devices" Tidak Bisa Disimpan
 
 #### Deskripsi Bug
+
 - Pada form tambah rule (Rules/Create.vue) dan form edit rule (Rules/Edit.vue), ketika user memilih "Target Device: All Devices" dan klik tombol "Simpan Rule", form tidak ter-submit dan tidak ada feedback apapun (tidak ada pesan error atau sukses).
 - Root cause: HTML5 validation attribute `required` pada dropdown "Pilih Device" masih aktif meskipun field disembunyikan dengan `v-show`. Browser memblokir form submit karena mendeteksi field required yang kosong, padahal field tersebut tidak diperlukan saat `target_type = 'all'`.
 
 #### File yang Diperbaiki
+
 1. **resources/js/Pages/Rules/Create.vue** (baris 44)
 2. **resources/js/Pages/Rules/Edit.vue** (baris 44)
 
 #### Perubahan Teknis
+
 - **Sebelum**: `<select v-model="form.target_device_id" required>`
-  - Attribute `required` bersifat static, selalu aktif
-  - HTML5 validation memblokir submit ketika `target_type = 'all'` karena field `target_device_id` bernilai `null`/empty
+    - Attribute `required` bersifat static, selalu aktif
+    - HTML5 validation memblokir submit ketika `target_type = 'all'` karena field `target_device_id` bernilai `null`/empty
 - **Sesudah**: `<select v-model="form.target_device_id" :required="form.target_type === 'specific'">`
-  - Attribute `required` bersifat conditional (Vue binding)
-  - Hanya aktif jika `target_type === 'specific'`
-  - Jika `target_type === 'all'`, attribute `required` tidak ada di DOM sehingga validasi browser di-skip dan form submit berhasil
+    - Attribute `required` bersifat conditional (Vue binding)
+    - Hanya aktif jika `target_type === 'specific'`
+    - Jika `target_type === 'all'`, attribute `required` tidak ada di DOM sehingga validasi browser di-skip dan form submit berhasil
 
 #### Komentar Penjelasan yang Ditambahkan
+
 ```vue
 <!-- Conditional required: hanya wajib jika target_type === 'specific'.
      Jika target_type === 'all', field ini tidak perlu diisi dan validasi browser di-skip.
@@ -463,15 +1046,17 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 ```
 
 #### Verifikasi
-| Check | Hasil |
-|-------|-------|
-| `npm run build` | ✅ Success (629 modules, 231.67 kB JS gzip 81.31 kB) |
-| `php artisan test` | ✅ 2 passed (11 assertions) |
-| Form Create - All Devices | ✅ Form submit berhasil, rule tersimpan |
+
+| Check                                    | Hasil                                                                         |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `npm run build`                          | ✅ Success (629 modules, 231.67 kB JS gzip 81.31 kB)                          |
+| `php artisan test`                       | ✅ 2 passed (11 assertions)                                                   |
+| Form Create - All Devices                | ✅ Form submit berhasil, rule tersimpan                                       |
 | Form Create - Specific Device (validasi) | ✅ Browser menampilkan "Please fill out this field" jika device tidak dipilih |
-| Form Edit - Ubah ke All Devices | ✅ Update berhasil |
+| Form Edit - Ubah ke All Devices          | ✅ Update berhasil                                                            |
 
 #### Impact
+
 - Risk: LOW (hanya perubahan HTML attribute, tidak mengubah backend logic)
 - Benefit: HIGH (bug critical yang menghalangi penambahan rule dengan target "All Devices" sudah resolved)
 
@@ -482,43 +1067,48 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 ### PERBAIKAN STYLING & UI (Style-Only) + BUG FIXES
 
 #### 1. Refactoring CSS Global (`resources/css/app.css`)
+
 - Tambahkan **CSS Variables (Design Tokens)**: warna (primary, success, warning, danger, info, netral), radius, shadow, font, spacing, transition, layout
 - Ekstrak **shared styles** dari 7 file Vue ke global: `.btn*` (7 varian), `.card`, `.page-container`, `.page-header`, `.badge` (5 varian), `.table` + `.pagination`, `.form-group`, `.alert` (4 varian), `.toggle-switch`, `.status-message`, `.info-panel`, `.form-hint`/`.form-error`
 - Hapus `body { display: flex }` → ganti `display: block` + `overflow-x: hidden` untuk mencegah overflow horizontal
 - Body reset sudah include font-family, box-sizing, margin/padding 0
 
 #### 2. Perbaikan Layout & Styling Semua Halaman (7 file Vue)
-| File | Perubahan Utama |
-|------|-----------------|
-| `AppLayout.vue` | Sidebar: gradient bg, border-left accent 3px pada hover/active, transition smooth, flex gap 12px, CSS variables; Content: full-width (hapus max-width 1200px, hapus justify-content center), padding-top 32px |
-| `Dashboard/Index.vue` | Stat cards: angka 36px bold, icon circle gradient bg, hover border-primary + elevation, hapus CSS duplikat; Toggle card: badge status modern |
-| `Devices/Index.vue` | Hapus CSS duplikat; Zebra striping tabel (`nth-child(even)`); Table card disembunyikan saat form buka (`v-show="!isFormOpen"`); Layout override max-width 1100px |
-| `Devices/Edit.vue` | Hanya sisa CSS spesifik: page-container max-width 760px + form-row flex |
-| `Rules/Index.vue` | Hapus CSS duplikat; Zebra striping tabel; Toggle switch custom 48x22px; Badge code monospace |
-| `Rules/Create.vue` & `Edit.vue` | Condition card pakai CSS variables; Grid 3 kolom (parameter/operator/value); Unit badge styling |
-| `IssueLogs/Index.vue` | Metric display: colored bg + left border 3px (good=hijau, bad=merah); Zebra striping; Auto-refresh bar polished |
+
+| File                            | Perubahan Utama                                                                                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AppLayout.vue`                 | Sidebar: gradient bg, border-left accent 3px pada hover/active, transition smooth, flex gap 12px, CSS variables; Content: full-width (hapus max-width 1200px, hapus justify-content center), padding-top 32px |
+| `Dashboard/Index.vue`           | Stat cards: angka 36px bold, icon circle gradient bg, hover border-primary + elevation, hapus CSS duplikat; Toggle card: badge status modern                                                                  |
+| `Devices/Index.vue`             | Hapus CSS duplikat; Zebra striping tabel (`nth-child(even)`); Table card disembunyikan saat form buka (`v-show="!isFormOpen"`); Layout override max-width 1100px                                              |
+| `Devices/Edit.vue`              | Hanya sisa CSS spesifik: page-container max-width 760px + form-row flex                                                                                                                                       |
+| `Rules/Index.vue`               | Hapus CSS duplikat; Zebra striping tabel; Toggle switch custom 48x22px; Badge code monospace                                                                                                                  |
+| `Rules/Create.vue` & `Edit.vue` | Condition card pakai CSS variables; Grid 3 kolom (parameter/operator/value); Unit badge styling                                                                                                               |
+| `IssueLogs/Index.vue`           | Metric display: colored bg + left border 3px (good=hijau, bad=merah); Zebra striping; Auto-refresh bar polished                                                                                               |
 
 #### 3. Emoji Removal — Clean & Professional Output
-| Target | Jumlah | Pengganti |
-|--------|--------|-----------|
-| Console Commands (7 file) | 7 file | `[INFO]`, `[OK]`, `[ERROR]`, `[WARN]`, `[LIST]`, `[DATA]`, `[TIME]`, `[SETUP]`, `[STOP]`, `[ALERT]`, `[TEST]`, `[CREATE]`, `[LOC]`, `[SIGNAL]`, `[TIPS]` |
-| `PrometheusService.php` | 2 log line | `[WARN] PROMETHEUS SIMULATION MODE...` |
-| Vue files | 0 (sudah bersih) | — |
+
+| Target                    | Jumlah           | Pengganti                                                                                                                                                |
+| ------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Console Commands (7 file) | 7 file           | `[INFO]`, `[OK]`, `[ERROR]`, `[WARN]`, `[LIST]`, `[DATA]`, `[TIME]`, `[SETUP]`, `[STOP]`, `[ALERT]`, `[TEST]`, `[CREATE]`, `[LOC]`, `[SIGNAL]`, `[TIPS]` |
+| `PrometheusService.php`   | 2 log line       | `[WARN] PROMETHEUS SIMULATION MODE...`                                                                                                                   |
+| Vue files                 | 0 (sudah bersih) | —                                                                                                                                                        |
 
 #### 4. Bug Fixes
+
 - **Overflow horizontal**: `body { display: block; overflow-x: hidden }` + `.main-content` full-width tanpa padding samping
 - **Content menempel atas**: Tambah `padding-top: 32px` pada `.main-content`
 - **Devices form + table overlap**: Table card `v-show="!isFormOpen"` — saat form buka hanya form yang tampil
 - **PHP Syntax**: Semua 8 file PHP lolos `php -l` (7 commands + PrometheusService)
 
 #### 5. Verifikasi
-| Check | Hasil |
-|-------|-------|
-| `npm run build` | ✅ Success (629 modules, CSS 10.73 kB gzip 2.53 kB) |
-| `php artisan test` | ✅ 2 passed (11 assertions) |
-| `php -l` (8 file) | ✅ No syntax errors |
-| `php artisan route:list` | ✅ 18 route utuh |
-| Emoji di web | ✅ Clean |
+
+| Check                    | Hasil                                               |
+| ------------------------ | --------------------------------------------------- |
+| `npm run build`          | ✅ Success (629 modules, CSS 10.73 kB gzip 2.53 kB) |
+| `php artisan test`       | ✅ 2 passed (11 assertions)                         |
+| `php -l` (8 file)        | ✅ No syntax errors                                 |
+| `php artisan route:list` | ✅ 18 route utuh                                    |
+| Emoji di web             | ✅ Clean                                            |
 
 ---
 
@@ -527,6 +1117,7 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 ### MIGRASI FULL: Blade → Vue 3 + Inertia.js (SPA)
 
 #### Setup Environment (Fase 0)
+
 - **Composer**: `inertiajs/inertia-laravel` v3.3.1
 - **NPM**: `vue@3`, `@vitejs/plugin-vue`, `@inertiajs/vue3`
 - **vite.config.js**: Tambah plugin `vue()`; input `resources/css/app.css`, `resources/js/app.js`
@@ -535,6 +1126,7 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 - **Middleware**: `HandleInertiaRequests` (`$rootView = 'app'`), share `flash` (success/error) + `old` input, terdaftar di `bootstrap/app.php` via `web(append:)`
 
 #### Fase 1: Dashboard
+
 - **Layout**: `resources/js/Pages/Layouts/AppLayout.vue` — sidebar fixed 280px, `flex-shrink: 0`, `main-content` flex center, `content-wrapper` max-width 1200px
 - **Page**: `resources/js/Pages/Dashboard/Index.vue` — stat cards dengan SVG icon, badge status modern (success/warning/danger), toggle monitoring native fetch + `router.reload()`, worker health badge computed, format heartbeat Asia/Jakarta
 - **Controller**: `DashboardController::index` → `Inertia::render('Dashboard/Index', compact(...))`
@@ -542,12 +1134,14 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 - **Cleanup**: Hapus `resources/views/dashboard/index.blade.php` + folder kosong
 
 #### Fase 2: Devices (Index + Edit)
+
 - **Index**: `Devices/Index.vue` — form tambah inline (v-show), Connect SNMP native fetch `/devices/ping`, table card modern, search/pagination Inertia `<Link>`, action buttons (Edit Link, Hapus useForm.delete)
 - **Edit**: `Devices/Edit.vue` — form card lengkap, Connect SNMP, verified IP logic, useForm.put
 - **Controller**: `index`, `edit` → `Inertia::render`; `store/update/destroy/pingDevice` tidak diubah
 - **Cleanup**: Hapus `resources/views/devices/index.blade.php`, `edit.blade.php` + folder
 
 #### Fase 3: Rules (Index + Create + Edit)
+
 - **Index**: `Rules/Index.vue` — badge code monospace, toggle switch native fetch `/rules/{id}/toggle`, condition list rapi, search/pagination Inertia
 - **Create**: `Rules/Create.vue` — form card, kondisi dinamis grid 3 kolom (parameter/operator/value), unit badge (Mbps/ms/%), add/remove kondisi
 - **Edit**: `Rules/Edit.vue` — mirip Create, prepopulate data rule + conditions
@@ -555,26 +1149,30 @@ Kondisi: Packet Loss > 5 %     ✅ (ada unit %, label user-friendly dengan space
 - **Cleanup**: Hapus `resources/views/rules/index.blade.php`, `create.blade.php`, `edit.blade.php` + folder
 
 #### Fase 4: Issue Logs
+
 - **Index**: `IssueLogs/Index.vue` — tabel metrics dengan badge warna (good/bad), auto-refresh fetch `/api/issue-logs` 60 detik + manual refresh + indicator dot animasi, filter tanggal, pagination, pagination info
 - **Controller**: `index` → `Inertia::render`; `indexApi` tetap untuk auto-refresh
 - **Cleanup**: Hapus `resources/views/issue_logs/index.blade.php`, `layouts/app.blade.php` + folder `layouts`
 
 #### Styling & Layout Perbaikan
+
 - **Global Reset**: `resources/css/app.css` — reset `*`, `body` (dipindah dari AppLayout scoped)
 - **Layout**: `AppLayout.vue` — sidebar fixed 280px `flex-shrink: 0`, link text overflow ellipsis, `main-content` flex center, `content-wrapper` max-width 1200px, padding 32px 24px
 - **Page Container**: Semua page — `max-width` disesuaikan per modul + `padding: 0 24px` (Dashboard/Devices/Index/Rules/Index: 1100px; Devices/Edit: 760px; Rules/Create/Edit: 860px; IssueLogs: 1200px)
 - **Design System Konsisten**:
-  - Card: radius 12px, shadow subtle, border `#e8edf3`, padding 28px
-  - Input/Select: border `#d1d9e0`, focus ring `#3498db` 3px
-  - Button Primary: `#3498db` → hover `#2980b9`; Secondary: `#95a5a6`; Ghost: transparent+border; Danger: `#e74c3c`
-  - Badge: pill radius 999px, font-weight 600
-  - Table: header `#f8fafc` + border-bottom 2px, row hover `#f8fbff`
-  - Color: Primary `#3498db`, Success `#27ae60`/`#2ecc71`, Warning `#e67e22`/`#f39c12`, Danger `#e74c3c`
+    - Card: radius 12px, shadow subtle, border `#e8edf3`, padding 28px
+    - Input/Select: border `#d1d9e0`, focus ring `#3498db` 3px
+    - Button Primary: `#3498db` → hover `#2980b9`; Secondary: `#95a5a6`; Ghost: transparent+border; Danger: `#e74c3c`
+    - Badge: pill radius 999px, font-weight 600
+    - Table: header `#f8fafc` + border-bottom 2px, row hover `#f8fbff`
+    - Color: Primary `#3498db`, Success `#27ae60`/`#2ecc71`, Warning `#e67e22`/`#f39c12`, Danger `#e74c3c`
 
 #### Backend Logic (TIDAK DIUBAH)
+
 - Migrasi, Model, Service (PrometheusService, ForwardChainingService, PrometheusTargetService), Scheduler, Console Commands — **100% utuh**
 
 #### Verifikasi Final
+
 - `npm run build` ✅ Success (629 modules, 231 kB JS gzip 81 kB)
 - `php artisan test` ✅ 2 passed (11 assertions)
 - `php artisan serve` → HTTP 200 OK

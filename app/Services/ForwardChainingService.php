@@ -101,6 +101,17 @@ class ForwardChainingService
                     // Jika return false, berarti alert sudah pernah dikirim dalam TTL window.
                     // IssueLog tetap di-update (di atas) walau alert tidak dikirim.
                     if ($this->tryAlert($device, $rule, $result)) {
+                        // Kirim alert ke Telegram via AlertService
+                        try {
+                            $alertService = app(\App\Services\AlertService::class);
+                            $alertService->sendAlert($device, $rule, $result);
+                        } catch (\Exception $e) {
+                            Log::error("ForwardChaining: Gagal kirim alert ke Telegram - " . $e->getMessage(), [
+                                'device_ip' => $device->ip_address,
+                                'rule_code' => $rule->code,
+                            ]);
+                        }
+
                         Log::debug("ForwardChaining: Alert marked for device {$device->ip_address}, rule {$rule->code}", [
                             'rule_code' => $rule->code,
                             'device_ip' => $device->ip_address,
@@ -274,9 +285,10 @@ class ForwardChainingService
      * Format key: alert_{device_id}_{rule_id}_{metrics_hash}_{time_window}
      *
      * Mengapa pakai metrics_hash?
-     * - Jika bandwidth 85 Mbps -> hash A
-     * - Jika bandwidth 90 Mbps -> hash B (beda gangguan!)
-     * - Tapi jika bandwidth 85.1 vs 85.2 -> hash sama (toleransi variance)
+     * - Metrics dibagi ke bucket agar perubahan kecil tidak membuat alert baru.
+     * - Bandwidth 100-109 Mbps masuk bucket 100; 110-119 Mbps masuk bucket 110.
+     * - Latency memakai bucket 10 ms dan packet loss memakai bucket 1 persen.
+     * - Metrics masuk bucket berbeda menghasilkan hash berbeda dan alert baru.
      *
      * Mengapa pakai time_window?
      * - Agar key expire otomatis sesuai TTL
@@ -289,17 +301,20 @@ class ForwardChainingService
      */
     private function generateDeduplicationKey(Device $device, Rule $rule, array $result): string
     {
-        // Bulatkan metrics untuk toleransi variance kecil
+        // Bucketing Phase 1 memakai toleransi tetap untuk mengabaikan noise metrics kecil.
+        $bandwidthTolerance = 10; // Mbps
+        $latencyTolerance = 10; // ms
+        $packetLossTolerance = 1; // persen
         $bandwidth = $result['metrics']['bandwidth'] !== null
-            ? round($result['metrics']['bandwidth'], 1) // Bulatkan 1 desimal
+            ? floor($result['metrics']['bandwidth'] / $bandwidthTolerance) * $bandwidthTolerance // Bucket 10 Mbps
             : 'null';
 
         $latency = $result['metrics']['latency'] !== null
-            ? round($result['metrics']['latency'], 0) // Bulatkan ke integer (ms)
+            ? floor($result['metrics']['latency'] / $latencyTolerance) * $latencyTolerance // Bucket 10 ms
             : 'null';
 
         $packetLoss = $result['metrics']['packet_loss'] !== null
-            ? round($result['metrics']['packet_loss'], 1) // Bulatkan 1 desimal
+            ? floor($result['metrics']['packet_loss'] / $packetLossTolerance) * $packetLossTolerance // Bucket 1 persen
             : 'null';
 
         // Hash metrics untuk key yang lebih pendek
