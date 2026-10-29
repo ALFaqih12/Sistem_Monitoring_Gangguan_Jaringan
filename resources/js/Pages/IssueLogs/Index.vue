@@ -59,30 +59,23 @@
                 <span class="badge badge-code">{{ log.rule?.code ?? '-' }}</span>
                 <small class="text-muted">{{ truncate(log.rule?.name ?? '-', 30) }}</small>
               </td>
-                <!-- Kolom metrics: tampilkan nilai aktual + threshold per-log.
-                     Setiap log memiliki threshold dan matched_metrics dari rule spesifiknya sendiri.
-                     - matched_metrics: boolean apakah parameter ini match kondisi rule
-                     - thresholds: { value, operator } untuk label threshold display
-                     
-                     Penting: v-if harus memastikan log.thresholds?.parameter itu sendiri ada
-                     (bukan null), bukan hanya cek .value !== null. Ini karena ketika
-                     threshold adalah null, maka log.thresholds?.parameter?.value akan
-                     menghasilkan `undefined`, dan `undefined !== null` adalah `true`,
-                     yang menyebabkan v-if lolos tapi akses ke .operator crash. -->
+                <!-- Kolom metrics: tampilkan HANYA nilai yang match dengan rule.
+                     Jika metric tidak match, tidak ditampilkan (filtered out).
+                     Metric yang match = gangguan = warna MERAH. -->
                 <td>
-                  <div v-if="log.bandwidth_actual != null" :class="['metric', log.matched_metrics?.bandwidth ? 'metric-bad' : 'metric-good']">
+                  <div v-if="log.matched_metrics?.bandwidth && log.bandwidth_actual != null" class="metric metric-bad">
                     BW: {{ log.bandwidth_actual }} Mbps
-                    <span v-if="log.matched_metrics?.bandwidth && log.thresholds?.bandwidth"> (threshold: {{ log.thresholds.bandwidth.operator }}{{ log.thresholds.bandwidth.value }})</span>
+                    <span v-if="log.thresholds?.bandwidth"> (threshold: {{ log.thresholds.bandwidth.operator }}{{ log.thresholds.bandwidth.value }})</span>
                   </div>
-                  <div v-if="log.latency_actual != null" :class="['metric', log.matched_metrics?.latency ? 'metric-bad' : 'metric-good']">
+                  <div v-if="log.matched_metrics?.latency && log.latency_actual != null" class="metric metric-bad">
                     Lat: {{ log.latency_actual }} ms
-                    <span v-if="log.matched_metrics?.latency && log.thresholds?.latency"> (threshold: {{ log.thresholds.latency.operator }}{{ log.thresholds.latency.value }})</span>
+                    <span v-if="log.thresholds?.latency"> (threshold: {{ log.thresholds.latency.operator }}{{ log.thresholds.latency.value }})</span>
                   </div>
-                  <div v-if="log.packet_loss_actual != null" :class="['metric', log.matched_metrics?.packet_loss ? 'metric-bad' : 'metric-good']">
+                  <div v-if="log.matched_metrics?.packet_loss && log.packet_loss_actual != null" class="metric metric-bad">
                     PL: {{ log.packet_loss_actual }}%
-                    <span v-if="log.matched_metrics?.packet_loss && log.thresholds?.packet_loss"> (threshold: {{ log.thresholds.packet_loss.operator }}{{ log.thresholds.packet_loss.value }})</span>
+                    <span v-if="log.thresholds?.packet_loss"> (threshold: {{ log.thresholds.packet_loss.operator }}{{ log.thresholds.packet_loss.value }})</span>
                   </div>
-                  <span v-if="log.bandwidth_actual == null && log.latency_actual == null && log.packet_loss_actual == null" class="text-muted">-</span>
+                  <span v-if="!log.matched_metrics?.bandwidth && !log.matched_metrics?.latency && !log.matched_metrics?.packet_loss" class="text-muted">-</span>
                 </td>
               <td>
                 <a

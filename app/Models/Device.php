@@ -16,7 +16,9 @@ class Device extends Model
         'ip_address',
         'device_model',
         'installation_date',
-        'maps_url'
+        'maps_url',
+        'source',         // Sumber device: 'manual' atau 'discovery'
+        'core_router_ip', // IP Core Router (untuk device dari discovery)
     ];
 
     // 2. Automasi pembuatan ID Pelanggan sebelum data disimpan

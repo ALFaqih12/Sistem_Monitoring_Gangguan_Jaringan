@@ -25,6 +25,15 @@ class PrometheusTargetService
     }
 
     /**
+     * Path file target untuk MikroTik SNMP exporter (DHCP lease bandwidth)
+     * File ini berisi IP Core Router MikroTik, bukan IP client.
+     */
+    private function mikrotikTargetFilePath(): string
+    {
+        return base_path('../prometheus/mikrotik-targets.json');
+    }
+
+    /**
      * Menambahkan IP target ke SNMP exporter dan Blackbox exporter sekaligus.
      * Method ini dipanggil saat user submit device baru.
      * Dilengkapi backup-restore untuk menjaga konsistensi kedua file.
@@ -173,6 +182,53 @@ class PrometheusTargetService
         }));
 
         $this->writeTargets($this->blackboxTargetFilePath(), $filteredTargets);
+    }
+
+    /**
+     * Menambahkan IP Core Router ke file mikrotik-targets.json
+     * Dipanggil saat device dari discovery ditambahkan.
+     * File ini digunakan Prometheus untuk scrape DHCP lease counter dari MikroTik.
+     * 
+     * @param string $coreRouterIp IP MikroTik Core Router
+     */
+    public function addMikrotikTarget(string $coreRouterIp): void
+    {
+        $targets = $this->readTargets($this->mikrotikTargetFilePath());
+
+        // Cek apakah Core Router IP sudah ada (hindari duplikat)
+        foreach ($targets as $target) {
+            if (in_array($coreRouterIp, $target['targets'], true)) {
+                return; // Sudah ada, skip
+            }
+        }
+
+        // Tambahkan Core Router sebagai target SNMP MikroTik
+        $targets[] = [
+            'targets' => [$coreRouterIp],
+            'labels' => [
+                'instance' => $coreRouterIp,
+                'job' => 'mikrotik_dhcp',
+            ],
+        ];
+
+        $this->writeTargets($this->mikrotikTargetFilePath(), $targets);
+    }
+
+    /**
+     * Menghapus IP Core Router dari file mikrotik-targets.json
+     * Dipanggil saat tidak ada lagi device yang menggunakan Core Router tersebut.
+     * 
+     * @param string $coreRouterIp IP MikroTik Core Router
+     */
+    public function removeMikrotikTarget(string $coreRouterIp): void
+    {
+        $targets = $this->readTargets($this->mikrotikTargetFilePath());
+
+        $filteredTargets = array_values(array_filter($targets, function (array $target) use ($coreRouterIp): bool {
+            return ! in_array($coreRouterIp, $target['targets'], true);
+        }));
+
+        $this->writeTargets($this->mikrotikTargetFilePath(), $filteredTargets);
     }
 
     /**

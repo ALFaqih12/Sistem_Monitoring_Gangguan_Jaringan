@@ -21,6 +21,11 @@ Route::get('/devices/{device}/edit', [DeviceController::class, 'edit'])->name('d
 Route::put('/devices/{device}', [DeviceController::class, 'update'])->name('devices.update');
 Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
 
+// Routes untuk Discovery via MikroTik Core Router
+Route::post('/devices/test-core-router', [DeviceController::class, 'testCoreRouter'])->name('devices.test-core-router');
+Route::post('/devices/connect-core-router', [DeviceController::class, 'connectCoreRouter'])->name('devices.connect-core-router');
+Route::post('/devices/add-client', [DeviceController::class, 'addClientDevice'])->name('devices.add-client');
+
 // Routes untuk Modul Rule Forward Chaining
 Route::get('/rules', [RuleController::class, 'index'])->name('rules.index');
 Route::get('/rules/create', [RuleController::class, 'create'])->name('rules.create');

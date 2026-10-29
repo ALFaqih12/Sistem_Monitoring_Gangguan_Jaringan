@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Device;
 use App\Services\PrometheusTargetService;
+use App\Services\MikroTikService;
+use App\Services\DeviceDiscoveryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Throwable;
 
@@ -13,9 +16,13 @@ class DeviceController extends Controller
 {
     /**
      * Menyimpan service target Prometheus agar controller hanya fokus pada alur request device.
+     * Tambahan: MikroTikService dan DeviceDiscoveryService untuk fitur discovery.
      */
-    public function __construct(private readonly PrometheusTargetService $prometheusTargets)
-    {
+    public function __construct(
+        private readonly PrometheusTargetService $prometheusTargets,
+        private readonly MikroTikService $mikrotikService,
+        private readonly DeviceDiscoveryService $discoveryService
+    ) {
     }
 
     /**
@@ -239,5 +246,171 @@ class DeviceController extends Controller
         });
 
         session(['verified_device_ips' => array_values($verifiedIps)]);
+    }
+
+    /**
+     * Test koneksi ke MikroTik Core Router.
+     * Endpoint: POST /devices/test-core-router
+     * 
+     * Method ini digunakan untuk validasi credentials sebelum discovery.
+     * User input IP, username, password → test connection → enable button discovery.
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function testCoreRouter(Request $request)
+    {
+        // Validasi input: IP harus valid IPv4, username & password required
+        $validated = $request->validate([
+            'core_router_ip' => 'required|ip',
+            'username' => 'required|string|max:100',
+            'password' => 'required|string|max:100',
+        ]);
+
+        // Test connection via MikroTikService
+        $result = $this->mikrotikService->testConnection(
+            $validated['core_router_ip'],
+            $validated['username'],
+            $validated['password']
+        );
+
+        // Return JSON response untuk AJAX
+        // Frontend akan enable button "Connect & Discover" jika success = true
+        return response()->json($result);
+    }
+
+    /**
+     * Connect ke Core Router dan discover DHCP clients.
+     * Endpoint: POST /devices/connect-core-router
+     * 
+     * Method ini melakukan discovery lengkap:
+     * 1. Query DHCP leases dari MikroTik
+     * 2. Auto-detect merk device (SNMP atau MAC lookup)
+     * 3. Filter device yang sudah registered
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function connectCoreRouter(Request $request)
+    {
+        // Validasi input
+        $validated = $request->validate([
+            'core_router_ip' => 'required|ip',
+            'username' => 'required|string|max:100',
+            'password' => 'required|string|max:100',
+        ]);
+
+        try {
+            // Discovery clients via DeviceDiscoveryService
+            // Service ini akan handle semua logic: query DHCP, enrich, filter
+            $clients = $this->discoveryService->discoverClients(
+                $validated['core_router_ip'],
+                [
+                    'username' => $validated['username'],
+                    'password' => $validated['password'],
+                ]
+            );
+
+            Log::info('DeviceController: Discovery SUCCESS', [
+                'core_router' => $validated['core_router_ip'],
+                'total_clients' => count($clients),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'clients' => $clients,
+                'total' => count($clients),
+                'message' => 'Discovery berhasil! Ditemukan ' . count($clients) . ' client devices.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('DeviceController: Discovery FAILED', [
+                'core_router' => $validated['core_router_ip'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal melakukan discovery: ' . $e->getMessage(),
+                'clients' => [],
+                'total' => 0,
+            ], 500);
+        }
+    }
+
+    /**
+     * Tambah client device dari hasil discovery.
+     * Endpoint: POST /devices/add-client
+     * 
+     * Method ini digunakan setelah user pilih client dari discovery list.
+     * Data IP dan device_model sudah auto-detect, user hanya input identitas pelanggan.
+     * 
+     * PENTING: Device dari discovery akan disimpan dengan:
+     * - source = 'discovery' (untuk identifikasi query method bandwidth)
+     * - core_router_ip = IP Core Router (untuk query SNMP DHCP lease counter)
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function addClientDevice(Request $request)
+    {
+        // Validasi input: IP harus unique, semua field required kecuali maps_url
+        $validated = $request->validate([
+            'ip_address' => 'required|ip|unique:devices,ip_address',
+            'device_model' => 'required|string|max:255',
+            'customer_name' => 'required|string|max:255',
+            'installation_date' => 'required|date',
+            'maps_url' => 'required|url|max:500',
+            'core_router_ip' => 'required|ip', // Core Router IP dari discovery session
+        ]);
+
+        try {
+            DB::transaction(function () use ($validated) {
+                // Create device record dengan source = 'discovery' dan core_router_ip
+                // customer_id akan auto-generate via model boot method (CUST-YYYYMM-XXX)
+                $device = Device::create([
+                    'customer_name' => $validated['customer_name'],
+                    'ip_address' => $validated['ip_address'],
+                    'device_model' => $validated['device_model'],
+                    'installation_date' => $validated['installation_date'],
+                    'maps_url' => $validated['maps_url'],
+                    'source' => 'discovery',  // Identifikasi source device
+                    'core_router_ip' => $validated['core_router_ip'], // Simpan Core Router IP
+                ]);
+
+                // Add to Prometheus targets (SNMP + Blackbox)
+                // SNMP target = Core Router IP (bukan client IP, karena query via router)
+                // Blackbox target = Client IP (untuk ping latency & packet loss)
+                $this->prometheusTargets->addTarget($validated['ip_address']);
+                
+                // Tambahkan Core Router ke mikrotik-targets.json
+                // Agar Prometheus scrape DHCP lease counter dari Core Router
+                // Method ini idempotent: tidak duplikat jika Core Router sudah terdaftar
+                $this->prometheusTargets->addMikrotikTarget($validated['core_router_ip']);
+
+                Log::info('DeviceController: Client device added via discovery', [
+                    'device_id' => $device->id,
+                    'customer_id' => $device->customer_id,
+                    'ip_address' => $device->ip_address,
+                    'customer_name' => $device->customer_name,
+                    'source' => 'discovery',
+                    'core_router_ip' => $device->core_router_ip,
+                ]);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Client device berhasil ditambahkan ke monitoring!',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('DeviceController: Failed to add client device', [
+                'ip_address' => $validated['ip_address'],
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menambahkan device: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

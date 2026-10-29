@@ -71,9 +71,28 @@ class ForwardChainingService
 
             foreach ($devicesToCheck as $device) {
                 $rulesChecked++;
-                $metrics = $batchMetrics[$device->ip_address] ?? [
-                    'bandwidth' => null, 'latency' => null, 'packet_loss' => null,
-                ];
+                
+                // Switch query method berdasarkan device source:
+                // - 'manual': query SNMP langsung ke device (method lama)
+                // - 'discovery': query SNMP ke Core Router untuk Simple Queue counter
+                if ($device->source === 'discovery' && $device->core_router_ip) {
+                    // Device dari discovery: bandwidth via Simple Queue Core Router
+                    $metrics = $this->prometheus->getAllMetricsWithSimpleQueue(
+                        $device->ip_address,
+                        $device->core_router_ip
+                    );
+                    
+                    Log::debug("ForwardChaining: Metrics via Simple Queue Core Router", [
+                        'device_ip' => $device->ip_address,
+                        'core_router_ip' => $device->core_router_ip,
+                        'metrics' => $metrics,
+                    ]);
+                } else {
+                    // Device manual atau fallback: gunakan batch metrics (method lama)
+                    $metrics = $batchMetrics[$device->ip_address] ?? [
+                        'bandwidth' => null, 'latency' => null, 'packet_loss' => null,
+                    ];
+                }
 
                 $result = $this->evaluateRuleForDevice($rule, $device, $metrics);
 

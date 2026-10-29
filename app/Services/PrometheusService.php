@@ -23,6 +23,13 @@ class PrometheusService
         }
     }
 
+    /**
+     * Ambil bandwidth device via SNMP langsung ke device (method lama).
+     * Digunakan untuk device yang di-add manual (bukan dari discovery).
+     * 
+     * Query: rate(ifHCInOctets) dari SNMP exporter per device.
+     * Return: Bandwidth dalam Mbps atau null jika tidak tersedia.
+     */
     public function getBandwidth(string $ipAddress): ?float
     {
         try {
@@ -40,6 +47,87 @@ class PrometheusService
             return null;
         }
     }
+
+    /**
+     * Ambil bandwidth client via Simple Queue di Core Router MikroTik.
+     * Digunakan untuk device yang di-add dari discovery (non-SNMP client).
+     * 
+     * Query bandwidth per IP client dari MikroTik Simple Queue counter.
+     * MikroTik export SNMP OID: mtxrQueueSimpleTable (.1.3.6.1.4.1.14988.1.1.2)
+     * - Bytes In (Download): .1.3.6.1.4.1.14988.1.1.2.1.1.9
+     * - Bytes Out (Upload): .1.3.6.1.4.1.14988.1.1.2.1.1.10
+     * 
+     * Prometheus metric (setelah SNMP exporter scrape):
+     * - mikrotikQueueBytesIn{instance="CORE_ROUTER_IP", name="CLIENT_IP"}
+     * - mikrotikQueueBytesOut{instance="CORE_ROUTER_IP", name="CLIENT_IP"}
+     * 
+     * Requirement: Simple Queue harus dibuat manual di WinBox dengan format:
+     * - Queue name = IP client (e.g., 192.168.1.10)
+     * - Target = IP client/32 (e.g., 192.168.1.10/32)
+     * 
+     * @param string $clientIp IP address client yang dicari bandwidthnya
+     * @param string $coreRouterIp IP Core Router MikroTik (sebagai instance target)
+     * @return float|null Bandwidth dalam Mbps (download + upload) atau null
+     */
+    public function getBandwidthFromSimpleQueue(string $clientIp, string $coreRouterIp): ?float
+    {
+        try {
+            // Query download bandwidth (bytes in) dari Simple Queue counter
+            // Filter by: instance = Core Router IP, name = Client IP (queue name)
+            $queryDownload = "rate(mikrotikQueueBytesIn{instance=\"{$coreRouterIp}\",name=\"{$clientIp}\"}[5m]) * 8 / 1000000";
+            
+            // Query upload bandwidth (bytes out) dari Simple Queue counter
+            $queryUpload = "rate(mikrotikQueueBytesOut{instance=\"{$coreRouterIp}\",name=\"{$clientIp}\"}[5m]) * 8 / 1000000";
+
+            $download = $this->executeSingleQuery($queryDownload);
+            $upload = $this->executeSingleQuery($queryUpload);
+
+            // Jika kedua metric null, berarti simple queue belum dibuat atau client tidak ada traffic
+            if ($download === null && $upload === null) {
+                Log::warning("Bandwidth from Simple Queue: No data for client {$clientIp} via {$coreRouterIp}. Pastikan Simple Queue sudah dibuat di WinBox dengan name={$clientIp}");
+                return null;
+            }
+
+            // Total bandwidth = download + upload
+            $total = ($download ?? 0) + ($upload ?? 0);
+            
+            Log::debug("Bandwidth from Simple Queue for {$clientIp}: Download={$download} Mbps, Upload={$upload} Mbps, Total={$total} Mbps");
+            
+            return $total > 0 ? $total : null;
+
+        } catch (\Exception $e) {
+            Log::error("Failed to get bandwidth from Simple Queue {$coreRouterIp} for client {$clientIp}: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Helper method untuk execute single Prometheus query dan extract value.
+     * Mengurangi code duplication di method bandwidth.
+     * 
+     * @param string $query PromQL query string
+     * @return float|null Value dari query result atau null
+     */
+    private function executeSingleQuery(string $query): ?float
+    {
+        try {
+            $response = Http::timeout(5)->get("{$this->baseUrl}/api/v1/query", ['query' => $query]);
+            
+            if ($response->successful()) {
+                $data = $response->json();
+                if (isset($data['data']['result'][0]['value'][1])) {
+                    return (float) $data['data']['result'][0]['value'][1];
+                }
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            Log::debug("Query execution failed: {$query} - " . $e->getMessage());
+            return null;
+        }
+    }
+
+
 
     public function getLatency(string $ipAddress): ?float
     {
@@ -105,6 +193,10 @@ class PrometheusService
         }
     }
 
+    /**
+     * Ambil semua metrik untuk device manual (query langsung ke device).
+     * Method lama yang masih digunakan untuk device source = 'manual'.
+     */
     public function getAllMetrics(string $ipAddress): array
     {
         return [
@@ -113,6 +205,26 @@ class PrometheusService
             'packet_loss' => $this->getPacketLoss($ipAddress),
         ];
     }
+
+    /**
+     * Ambil semua metrik untuk device dari discovery (bandwidth via Simple Queue Core Router).
+     * Bandwidth diambil dari Core Router Simple Queue counter.
+     * Latency & packet loss tetap dari Blackbox (ping ke client langsung).
+     * 
+     * @param string $clientIp IP address client device
+     * @param string $coreRouterIp IP Core Router MikroTik
+     * @return array ['bandwidth' => float|null, 'latency' => float|null, 'packet_loss' => float|null]
+     */
+    public function getAllMetricsWithSimpleQueue(string $clientIp, string $coreRouterIp): array
+    {
+        return [
+            'bandwidth' => $this->getBandwidthFromSimpleQueue($clientIp, $coreRouterIp),
+            'latency' => $this->getLatency($clientIp),
+            'packet_loss' => $this->getPacketLoss($clientIp),
+        ];
+    }
+
+
 
     /**
      * Ambil metrik untuk BANYAK IP dalam 1 batch query Prometheus.
