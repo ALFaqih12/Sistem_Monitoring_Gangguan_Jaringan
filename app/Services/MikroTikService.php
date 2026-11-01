@@ -9,6 +9,28 @@ use Illuminate\Support\Facades\Log;
 class MikroTikService
 {
     /**
+     * Helper: buat koneksi RouterOS API client.
+     * Dipakai bersama oleh testConnection() dan getDhcpLeases() supaya konfigurasi
+     * host/user/pass/port/timeout hanya didefinisikan di satu tempat.
+     *
+     * @param string $ip IP address Core Router MikroTik
+     * @param string $username Username API
+     * @param string $password Password user
+     * @param int $timeout Timeout koneksi dalam detik
+     * @return Client Instance RouterOS client
+     */
+    private function createClient(string $ip, string $username, string $password, int $timeout = 5): Client
+    {
+        return new Client([
+            'host' => $ip,
+            'user' => $username,
+            'pass' => $password,
+            'port' => (int) env('MIKROTIK_API_PORT', 8728),
+            'timeout' => $timeout,
+        ]);
+    }
+
+    /**
      * Test koneksi ke MikroTik RouterOS API.
      * Method ini digunakan untuk validasi credentials sebelum melakukan discovery.
      * 
@@ -21,13 +43,7 @@ class MikroTikService
     {
         try {
             // Create RouterOS API client dengan timeout 5 detik
-            $client = new Client([
-                'host' => $ip,
-                'user' => $username,
-                'pass' => $password,
-                'port' => (int) env('MIKROTIK_API_PORT', 8728),
-                'timeout' => 5,
-            ]);
+            $client = $this->createClient($ip, $username, $password, 5);
 
             // Test query: ambil system identity untuk memastikan koneksi berhasil
             // Query ini sangat ringan dan hanya untuk validasi
@@ -75,14 +91,8 @@ class MikroTikService
     public function getDhcpLeases(string $ip, string $username, string $password): array
     {
         try {
-            // Create RouterOS API client
-            $client = new Client([
-                'host' => $ip,
-                'user' => $username,
-                'pass' => $password,
-                'port' => (int) env('MIKROTIK_API_PORT', 8728),
-                'timeout' => 10, // Timeout lebih lama untuk query DHCP
-            ]);
+            // Create RouterOS API client (timeout lebih lama untuk query DHCP)
+            $client = $this->createClient($ip, $username, $password, 10);
 
             // Query DHCP leases: /ip/dhcp-server/lease/print
             // Ini akan return semua lease (bound, waiting, offered, dll)
@@ -120,14 +130,4 @@ class MikroTikService
             throw $e;
         }
     }
-
-    /**
-     * Get MikroTik system resource info (optional, untuk debugging).
-     * Bisa digunakan untuk monitoring health Core Router.
-     * 
-     * @param string $ip IP address Core Router
-     * @param string $username Username API
-     * @param string $password Password
-     * @return array|null System resource data atau null jika gagal
-     */
 }
