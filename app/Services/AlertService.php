@@ -22,19 +22,29 @@ class AlertService
      */
     public function sendAlert(Device $device, Rule $rule, array $result): bool
     {
-        // 1. Cek apakah alert system aktif
-        $config = AlertSetting::getConfig();
-        
-        if (!$config || !$config->is_active) {
-            Log::debug("AlertService: Alert system tidak aktif, skip pengiriman.");
+        // Cek report terakhir untuk kombinasi device + rule.
+        $lastReport = AlertLog::where('device_id', $device->id)
+            ->where('rule_id', $rule->id)
+            ->latest('detected_at')
+            ->first();
+
+        // Rule baru selalu dicatat; rule lama hanya dicatat bila metric berubah minimal 10 unit.
+        if ($lastReport && !$this->hasSignificantChange($lastReport, $result['metrics'])) {
+            Log::debug("AlertService: Perubahan metric belum signifikan, report dilewati.");
             return false;
         }
 
-        // 2. Format pesan alert
+        // Format pesan dan buat report sebelum mencoba kirim Telegram.
+        $config = AlertSetting::getConfig();
         $message = $this->formatMessage($device, $rule, $result);
-
-        // 3. Buat record di alert_logs dengan status 'pending'
         $alertLog = $this->createAlertLog($device, $rule, $result, $message);
+
+        // Telegram nonaktif: report tetap tersimpan dengan status '-'.
+        if (!$config || !$config->is_active) {
+            $alertLog->update(['status' => '-']);
+            Log::debug("AlertService: Telegram nonaktif, report tetap dicatat.");
+            return false;
+        }
 
         // 4. Kirim ke Telegram dengan retry mechanism
         $sent = $this->sendToTelegram(
@@ -47,6 +57,24 @@ class AlertService
         );
 
         return $sent;
+    }
+
+    /**
+     * Cek perubahan metric signifikan: minimal 10 Mbps, ms, atau persen.
+     * Satu parameter signifikan sudah cukup untuk membuat report baru.
+     */
+    private function hasSignificantChange(AlertLog $lastReport, array $metrics): bool
+    {
+        foreach (['bandwidth_actual' => 'bandwidth', 'latency_actual' => 'latency', 'packet_loss_actual' => 'packet_loss'] as $oldKey => $metricKey) {
+            $oldValue = $lastReport->{$oldKey};
+            $newValue = $metrics[$metricKey] ?? null;
+
+            if ($oldValue !== null && $newValue !== null && abs((float) $newValue - (float) $oldValue) >= 10) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

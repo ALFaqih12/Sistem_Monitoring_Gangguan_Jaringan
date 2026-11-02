@@ -9,10 +9,10 @@ use Inertia\Inertia;
 class IssueLogController extends Controller
 {
     /**
-     * Menampilkan halaman Log Gangguan dengan pencarian dan pagination.
+     * Menampilkan halaman Log Gangguan dengan pencarian dan scrollable table.
      *
-     * Kolom status dan notes sudah dihapus dari tabel issue_logs (migration 2026_08_22).
-     * Sekarang hanya menampilkan: waktu, pelanggan/IP, device, rule, metrics, lokasi, aksi.
+     * Default filter: 7 hari terakhir jika tidak ada filter tanggal manual.
+     * User bisa clear filter untuk lihat semua data atau set custom date range.
      */
     public function index(Request $request)
     {
@@ -20,6 +20,12 @@ class IssueLogController extends Controller
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
 
+        // Default filter: 7 hari terakhir jika user tidak set date filter
+        $isDefaultFilter = !$dateFrom && !$dateTo;
+        if ($isDefaultFilter) {
+            $dateFrom = now()->subDays(7)->format('Y-m-d');
+        }
+
         $logs = IssueLog::with(['device', 'rule.conditions'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -39,23 +45,28 @@ class IssueLogController extends Controller
                 $query->whereDate('detected_at', '<=', $dateTo);
             })
             ->latest('detected_at')
-            ->paginate(15)
-            ->withQueryString();
+            ->get();
 
-        // Migrasi Blade -> Inertia: halaman log dirender Vue IssueLogs/Index.vue.
-        // Props (logs paginator, search, dateFrom, dateTo) dikirim sama persis.
-        // Format detected_at_formatted sudah tersedia via accessor di model IssueLog.
-        // Auto-refresh UI tetap lewat endpoint AJAX /api/issue-logs (indexApi).
-        return Inertia::render('IssueLogs/Index', compact('logs', 'search', 'dateFrom', 'dateTo'));
+        // Total count untuk info di UI
+        $total = $logs->count();
+
+        // Migrasi pagination ke sticky scroll: return collection (bukan paginator).
+        // UI Vue pakai fixed height table dengan scroll, no pagination buttons.
+        return Inertia::render('IssueLogs/Index', [
+            'logs' => $logs,
+            'total' => $total,
+            'search' => $search,
+            'dateFrom' => $request->input('date_from'), // Original input (bukan yang di-override)
+            'dateTo' => $dateTo,
+            'isDefaultFilter' => $isDefaultFilter,
+        ]);
     }
 
     /**
      * API endpoint — kembalikan log gangguan sebagai JSON untuk auto-refresh UI.
      *
-     * Response berisi data log + metadata pagination agar JavaScript
-     * bisa update tabel secara parsial tanpa reload halaman penuh.
-     * Endpoint ini DISIMPAN karena auto-refresh UI dimigrasi ke fetch AJAX
-     * (rekuesti yang disetujui), bukan menjadi REST API publik.
+     * Response berisi data log tanpa pagination (scrollable table).
+     * Default filter: 7 hari terakhir jika tidak ada date filter.
      */
     public function indexApi(Request $request)
     {
@@ -63,6 +74,12 @@ class IssueLogController extends Controller
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
 
+        // Default filter: 7 hari terakhir jika user tidak set date filter
+        $isDefaultFilter = !$dateFrom && !$dateTo;
+        if ($isDefaultFilter) {
+            $dateFrom = now()->subDays(7)->format('Y-m-d');
+        }
+
         $logs = IssueLog::with(['device', 'rule.conditions'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -82,21 +99,16 @@ class IssueLogController extends Controller
                 $query->whereDate('detected_at', '<=', $dateTo);
             })
             ->latest('detected_at')
-            ->paginate(15)
-            ->withQueryString();
+            ->get();
 
-        // Format data untuk konsumsi JavaScript — struktur disamakan dengan paginator Laravel
-        // agar frontend Vue (IssueLogs/Index.vue) bisa memprosesnya tunjangkau.
-        $formattedLogs = $logs->through(function ($log) {
+        // Format data untuk konsumsi JavaScript
+        $formattedLogs = $logs->map(function ($log) {
             return [
                 'id' => $log->id,
-                // Gunakan accessor model detected_at_formatted agar konsisten dengan Inertia.
                 // Format DD/MM/YYYY HH:MM (misal: 01/09/2026 15:22) — menggunakan timezone aplikasi.
+                'detected_at_formatted' => $log->detected_at_formatted,
                 'detected_at' => $log->detected_at_formatted,
                 // Threshold per-log: nilai maksimum + operator setiap parameter dari rule conditions.
-                // Ini memastikan kolom metrics frontend menampilkan threshold dari rule yang
-                // benar-benar match, bukan rule pertama di halaman.
-                // Format: { bandwidth: {value, operator}, latency: {...}, ... }
                 'thresholds' => $log->thresholds ?? [
                     'bandwidth' => null,
                     'latency' => null,
@@ -122,7 +134,6 @@ class IssueLogController extends Controller
                 'packet_loss_actual' => $log->packet_loss_actual,
                 // matched_metrics: boolean per parameter apakah metrics memenuhi kondisi rule.
                 // Digunakan frontend untuk styling warna (merah=match, hijau=tidak).
-                // Format: { bandwidth: true|false, latency: true|false, packet_loss: true|false }
                 'matched_metrics' => $log->matched_metrics ?? [
                     'bandwidth' => false,
                     'latency' => false,
@@ -131,23 +142,14 @@ class IssueLogController extends Controller
             ];
         });
 
-        // Response disamakan dengan struktur paginator Laravel agar frontend bisa pakai
-        // logs.data, logs.meta.last_page, logs.links secara konsisten antara initial load
-        // (Inertia) dan auto-refresh (AJAX fetch).
+        // Response sederhana tanpa pagination meta (scrollable table)
         return response()->json([
-            'data' => $formattedLogs->items(),
-            'meta' => [
-                'current_page' => $logs->currentPage(),
-                'last_page' => $logs->lastPage(),
-                'per_page' => $logs->perPage(),
-                'total' => $logs->total(),
-                'from' => $logs->currentPage() * $logs->perPage() - $logs->perPage() + 1,
-                'to' => min($logs->currentPage() * $logs->perPage(), $logs->total()),
-            ],
-            'links' => $logs->links(), // pagination links untuk navigasi (biasanya kosong di fetch)
+            'data' => $formattedLogs->values()->all(),
+            'total' => $logs->count(),
+            'isDefaultFilter' => $isDefaultFilter,
             'filters' => [
                 'search' => $search,
-                'date_from' => $dateFrom,
+                'date_from' => $request->input('date_from'), // Original input
                 'date_to' => $dateTo,
             ],
             'updated_at' => now()->toDateTimeString(),

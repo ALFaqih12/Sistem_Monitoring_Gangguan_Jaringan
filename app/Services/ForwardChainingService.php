@@ -116,29 +116,15 @@ class ForwardChainingService
                         'metrics' => $result['metrics'],
                     ]);
 
-                    // Alert deduplication — hanya mengontrol apakah Telegram alert dikirim.
-                    // Jika return false, berarti alert sudah pernah dikirim dalam TTL window.
-                    // IssueLog tetap di-update (di atas) walau alert tidak dikirim.
-                    if ($this->tryAlert($device, $rule, $result)) {
-                        // Kirim alert ke Telegram via AlertService
-                        try {
-                            $alertService = app(\App\Services\AlertService::class);
-                            $alertService->sendAlert($device, $rule, $result);
-                        } catch (\Exception $e) {
-                            Log::error("ForwardChaining: Gagal kirim alert ke Telegram - " . $e->getMessage(), [
-                                'device_ip' => $device->ip_address,
-                                'rule_code' => $rule->code,
-                            ]);
-                        }
-
-                        Log::debug("ForwardChaining: Alert marked for device {$device->ip_address}, rule {$rule->code}", [
-                            'rule_code' => $rule->code,
+                    // AlertService mengatur significant-change report dan status Telegram.
+                    // Dipanggil setiap match agar report tetap tercatat saat Telegram nonaktif.
+                    try {
+                        $alertService = app(\App\Services\AlertService::class);
+                        $alertService->sendAlert($device, $rule, $result);
+                    } catch (\Exception $e) {
+                        Log::error("ForwardChaining: Gagal memproses report - " . $e->getMessage(), [
                             'device_ip' => $device->ip_address,
-                        ]);
-                    } else {
-                        Log::debug("ForwardChaining: Alert deduped (within TTL) for device {$device->ip_address}, rule {$rule->code}", [
                             'rule_code' => $rule->code,
-                            'device_ip' => $device->ip_address,
                         ]);
                     }
                 }

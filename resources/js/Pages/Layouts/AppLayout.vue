@@ -46,6 +46,13 @@
             >Manajemen Alert</Link
           >
         </li>
+        <li>
+          <Link
+            href="/reports"
+            :className="isActive('Reports') ? 'active' : ''"
+            >Report Gangguan</Link
+          >
+        </li>
       </ul>
     </div>
 

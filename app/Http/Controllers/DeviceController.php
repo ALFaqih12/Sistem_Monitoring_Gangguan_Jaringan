@@ -49,10 +49,48 @@ class DeviceController extends Controller
             ->paginate(15)
             ->withQueryString(); // Mempertahankan parameter search di URL pagination
 
+        // Transform paginator untuk Inertia: build links array manual untuk Vue pagination buttons
+        $links = [];
+        
+        // Previous link
+        if ($devices->onFirstPage()) {
+            $links[] = ['url' => null, 'label' => 'Previous', 'active' => false];
+        } else {
+            $links[] = ['url' => $devices->previousPageUrl(), 'label' => 'Previous', 'active' => false];
+        }
+        
+        // Page number links
+        foreach (range(1, $devices->lastPage()) as $page) {
+            $links[] = [
+                'url' => $devices->url($page),
+                'label' => (string) $page,
+                'active' => $page === $devices->currentPage(),
+            ];
+        }
+        
+        // Next link
+        if ($devices->hasMorePages()) {
+            $links[] = ['url' => $devices->nextPageUrl(), 'label' => 'Next', 'active' => false];
+        } else {
+            $links[] = ['url' => null, 'label' => 'Next', 'active' => false];
+        }
+
+        $devicesData = [
+            'data' => $devices->items(),
+            'meta' => [
+                'current_page' => $devices->currentPage(),
+                'last_page' => $devices->lastPage(),
+                'per_page' => $devices->perPage(),
+                'total' => $devices->total(),
+            ],
+            'links' => $links,
+        ];
+
         // Migrasi Blade -> Inertia: halaman device dirender Vue Devices/Index.vue.
-        // Props (devices paginator + search) dikirim sama; withQueryString() tetap
-        // dipertahankan supaya parameter search kekal di URL pagination.
-        return Inertia::render('Devices/Index', compact('devices', 'search'));
+        return Inertia::render('Devices/Index', [
+            'devices' => $devicesData,
+            'search' => $search,
+        ]);
     }
 
     // 2. Menyimpan Data ke Database

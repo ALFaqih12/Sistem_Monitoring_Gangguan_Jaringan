@@ -3,7 +3,6 @@
   <div class="page-container">
     <div class="page-header">
       <h2>Rule Forward Chaining</h2>
-      <Link href="/rules/create" class="btn btn-primary">+ Tambah Rule</Link>
     </div>
 
     <div v-if="page.props.flash?.success" class="alert alert-success">{{ page.props.flash.success }}</div>
@@ -11,19 +10,110 @@
       <div v-for="(msg, field) in page.props.errors" :key="field">{{ msg }}</div>
     </div>
 
-    <div class="card">
+    <!-- Form Tambah Rule (inline toggle) -->
+    <div class="card" v-show="isFormOpen">
+      <h3 class="form-title">Tambah Rule Baru</h3>
+      <form @submit.prevent="submitCreate" class="form">
+        <div class="form-group">
+          <label>Kode Rule</label>
+          <input type="text" value="Auto Generate (R01, R02, ...)" readonly />
+        </div>
+
+        <div class="form-group">
+          <label>Nama Rule <span class="required">*</span></label>
+          <input type="text" v-model="createForm.name" required placeholder="Contoh: Gangguan Bandwidth Tinggi" />
+          <small v-if="createForm.errors.name" class="form-error">{{ createForm.errors.name }}</small>
+        </div>
+
+        <div class="form-group">
+          <label>Target Device <span class="required">*</span></label>
+          <select v-model="createForm.target_type" required>
+            <option value="all">All Devices</option>
+            <option value="specific">Specific Device</option>
+          </select>
+        </div>
+
+        <div class="form-group" v-show="createForm.target_type === 'specific'">
+          <label>Pilih Device <span class="required">*</span></label>
+          <select v-model.number="createForm.target_device_id" :required="createForm.target_type === 'specific'">
+            <option value="">-- Pilih Device --</option>
+            <option v-for="d in devices" :key="d.id" :value="d.id">
+              {{ d.ip_address }} - {{ d.customer_name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Kondisi Rule (IF Condition) <span class="required">*</span></label>
+          <p class="form-hint text-muted">Minimal 1 kondisi. Jika lebih dari 1, kondisi akan dihubungkan dengan AND.</p>
+
+          <div class="conditions-wrapper">
+            <div
+              v-for="(c, i) in createForm.conditions"
+              :key="i"
+              class="condition-card"
+            >
+              <div class="condition-header">
+                <span class="condition-label">Kondisi {{ i + 1 }}</span>
+                <button
+                  v-if="createForm.conditions.length > 1"
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  @click="removeCondition(i)"
+                >Hapus</button>
+              </div>
+              <div class="condition-fields">
+                <div class="field-group">
+                  <label>Parameter</label>
+                  <select v-model="c.parameter" required>
+                    <option value="bandwidth">Bandwidth</option>
+                    <option value="latency">Latency</option>
+                    <option value="packet_loss">Packet Loss</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label>Operator</label>
+                  <select v-model="c.operator" required>
+                    <option value=">">></option>
+                    <option value="<"><</option>
+                    <option value=">=">>=</option>
+                    <option value="<="><=</option>
+                    <option value="=">=</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label>Nilai <span class="unit-badge">{{ unitFor(c.parameter) }}</span></label>
+                  <input type="number" v-model="c.value" step="0.01" min="0" required placeholder="0" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-secondary" @click="addCondition">+ Tambah Kondisi</button>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" @click="closeForm">Kembali</button>
+          <button type="submit" class="btn btn-primary">Simpan Rule</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Table Daftar Rule -->
+    <div class="card" v-show="!isFormOpen">
       <div class="card-header">
         <h3>Daftar Rule</h3>
-        <div class="table-toolbar">
-          <div class="search-form">
-            <input
-              v-model="searchText"
-              class="form-input"
-              placeholder="Cari Code atau Nama Rule..."
-            />
-            <button type="button" class="btn btn-primary btn-sm" @click="doSearch">Cari</button>
-            <button v-if="searchText" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">Reset</button>
-          </div>
+      </div>
+      <div class="table-toolbar">
+        <button type="button" class="btn btn-primary" @click="openForm">+ Tambah Rule</button>
+        <div class="search-form">
+          <input
+            v-model="searchText"
+            class="form-input"
+            placeholder="Cari Code atau Nama Rule..."
+          />
+          <button type="button" class="btn btn-primary btn-sm" @click="doSearch">Cari</button>
+          <button v-if="searchText" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">Reset</button>
         </div>
       </div>
 
@@ -44,19 +134,10 @@
               <td><span class="badge badge-code">{{ rule.code }}</span></td>
               <td class="cell-strong">{{ rule.name }}</td>
               <td>
-                <!-- Jika target_type adalah 'all', tampilkan badge "All Devices" -->
                 <span v-if="rule.target_type === 'all'" class="badge badge-info">All Devices</span>
-                
-                <!-- Jika specific device, cek apakah target_device_id ada DAN relasi target_device ter-load.
-                     Bug fix: defensive check untuk memastikan device benar-benar tersedia sebelum display.
-                     Kondisi double-check ini mencegah false positive "Device telah dihapus" ketika
-                     data tersimpan dengan benar tetapi relasi tidak ter-load sempurna.
-                     PENTING: Laravel mengirim relasi sebagai snake_case (target_device), bukan camelCase (targetDevice). -->
                 <span v-else-if="rule.target_device_id && rule.target_device" class="badge">
                   {{ rule.target_device.ip_address }}
                 </span>
-                
-                <!-- Fallback: jika target_device_id tidak ada atau device benar-benar sudah dihapus dari database -->
                 <span v-else class="badge badge-danger">Device telah dihapus</span>
               </td>
               <td>
@@ -111,16 +192,27 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 
 const props = defineProps({
   rules: { type: Object, default: () => ({}) },
+  devices: { type: Array, default: () => [] },
   search: { type: String, default: '' },
 });
 
 const page = usePage();
 const searchText = ref(props.search);
+const isFormOpen = ref(false);
+
+// Form untuk create rule baru
+const createForm = useForm({
+  name: '',
+  target_type: 'all',
+  target_device_id: null,
+  conditions: [{ parameter: 'bandwidth', operator: '>', value: '' }],
+});
 
 function csrfToken() {
   return document.querySelector('meta[name="csrf-token"]').content;
 }
 
+// Toggle active/inactive rule via AJAX
 async function onToggle(rule, e) {
   const desired = e.target.checked;
   const prev = rule.is_active;
@@ -144,11 +236,13 @@ async function onToggle(rule, e) {
   }
 }
 
+// Delete rule
 function remove(rule) {
   if (!confirm('Yakin ingin menghapus rule ini? Semua kondisi yang terkait juga akan terhapus.')) return;
   useForm({}).delete(`/rules/${rule.id}`);
 }
 
+// Search functionality
 function doSearch() {
   router.get('/rules', { search: searchText.value });
 }
@@ -156,12 +250,56 @@ function clearSearch() {
   searchText.value = '';
   router.get('/rules');
 }
+
+// Form toggle
+function openForm() {
+  isFormOpen.value = true;
+}
+function closeForm() {
+  isFormOpen.value = false;
+  createForm.reset();
+  createForm.conditions = [{ parameter: 'bandwidth', operator: '>', value: '' }];
+}
+
+// Condition helpers
+function unitFor(parameter) {
+  return parameter === 'bandwidth' ? 'Mbps' : parameter === 'latency' ? 'ms' : '%';
+}
+function addCondition() {
+  createForm.conditions.push({ parameter: 'bandwidth', operator: '>', value: '' });
+}
+function removeCondition(index) {
+  createForm.conditions.splice(index, 1);
+}
+
+// Submit create form
+function submitCreate() {
+  createForm.post('/rules', {
+    onSuccess: () => {
+      closeForm();
+    },
+  });
+}
 </script>
 
 <style scoped>
 /* Layout override: Rules halaman ini pakai max-width 1100px */
 .page-container {
   max-width: 1100px;
+}
+
+/* Constrain form and table cards to same width */
+.card {
+  max-width: 100%;
+  width: 100%;
+}
+
+/* Form title styling (match Devices module, no border) */
+.form-title {
+  margin: 0 0 20px;
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Badge khusus di tabel rule */
@@ -235,5 +373,54 @@ tbody tr:nth-child(even):hover {
 }
 .toggle-slider:hover {
   opacity: 0.8;
+}
+
+/* Form create rule inline styling */
+.condition-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.condition-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+.condition-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+.condition-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-group label {
+  margin-bottom: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+.unit-badge {
+  background: var(--color-border);
+  color: var(--color-text);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  margin-left: 8px;
+}
+.required {
+  color: var(--color-danger);
 }
 </style>

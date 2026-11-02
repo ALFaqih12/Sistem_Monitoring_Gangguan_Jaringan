@@ -14,6 +14,7 @@ class RuleController extends Controller
 {
     /**
      * Menampilkan halaman utama dengan tabel list rule dan pagination.
+     * Tambah devices untuk inline form create rule.
      */
     public function index(Request $request)
     {
@@ -34,9 +35,52 @@ class RuleController extends Controller
             ->paginate(15)
             ->withQueryString(); // Mempertahankan parameter search di URL pagination
 
+        // Transform paginator untuk Inertia: build links array manual untuk Vue pagination buttons
+        $links = [];
+        
+        // Previous link
+        if ($rules->onFirstPage()) {
+            $links[] = ['url' => null, 'label' => 'Previous', 'active' => false];
+        } else {
+            $links[] = ['url' => $rules->previousPageUrl(), 'label' => 'Previous', 'active' => false];
+        }
+        
+        // Page number links
+        foreach (range(1, $rules->lastPage()) as $page) {
+            $links[] = [
+                'url' => $rules->url($page),
+                'label' => (string) $page,
+                'active' => $page === $rules->currentPage(),
+            ];
+        }
+        
+        // Next link
+        if ($rules->hasMorePages()) {
+            $links[] = ['url' => $rules->nextPageUrl(), 'label' => 'Next', 'active' => false];
+        } else {
+            $links[] = ['url' => null, 'label' => 'Next', 'active' => false];
+        }
+
+        $rulesData = [
+            'data' => $rules->items(),
+            'meta' => [
+                'current_page' => $rules->currentPage(),
+                'last_page' => $rules->lastPage(),
+                'per_page' => $rules->perPage(),
+                'total' => $rules->total(),
+            ],
+            'links' => $links,
+        ];
+
+        // Ambil devices untuk dropdown target device di form create
+        $devices = Device::orderBy('customer_name', 'asc')->get();
+
         // Migrasi Blade -> Inertia: halaman rule dirender Vue Rules/Index.vue.
-        // Props (rules paginator + search) dikirim sama; withQueryString() tetap.
-        return Inertia::render('Rules/Index', compact('rules', 'search'));
+        return Inertia::render('Rules/Index', [
+            'rules' => $rulesData,
+            'devices' => $devices,
+            'search' => $search,
+        ]);
     }
 
     /**

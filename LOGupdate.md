@@ -1,3 +1,522 @@
+## 2026-11-02 (Update #12)
+
+### FITUR BARU: Modul Report Gangguan dengan Significant Change Detection
+
+#### Deskripsi Fitur
+
+Memisahkan history alert dari Modul Manajemen Alert menjadi modul dedicated "Report Gangguan" dengan logic pencatatan berbasis perubahan signifikan metric dan fitur Bersihkan Report.
+
+#### Problem Statement dari Current Implementation
+
+**Current State:**
+- History alert tercampur dengan settings di Modul Manajemen Alert
+- Log hanya tercatat jika alert Telegram aktif
+- Setiap rule match langsung insert log → spam jika metric fluktuasi minor (85→87→88→86)
+- UX kurang clean (settings + history dalam satu halaman)
+- Tidak ada cara hapus semua report sekaligus
+
+**Pain Points:**
+- Admin harus scroll panjang di halaman Alert untuk lihat history
+- Report tidak tercatat jika telegram dinonaktifkan (data loss)
+- Database penuh dengan log perubahan kecil yang tidak meaningful
+- Tidak bisa clean up old reports secara bulk
+
+#### Solution Overview
+
+**A. Modul Baru: Report Gangguan**
+- Dedicated page untuk viewing & managing reports
+- Route: `/reports`
+- Menu sidebar baru
+- Features:
+  - Table dengan pagination (15 per page)
+  - Search (by customer name, IP, rule code/name)
+  - Date filter (default: 7 hari terakhir)
+  - Export PDF
+  - **Bersihkan Report** (delete all dengan konfirmasi)
+
+**B. Significant Change Detection**
+- Logic pencatatan: hanya jika perubahan metric ≥ threshold
+- Threshold per parameter:
+  - **Bandwidth:** ±10 Mbps
+  - **Latency:** ±10 ms
+  - **Packet Loss:** ±10%
+- **Rule baru match tetap tercatat** (always record first detection)
+- Query scope: kombinasi `device_id` + `rule_id` (per device per rule)
+
+**C. Status Field Logic (Unconditional Logging)**
+```
+IF rule baru match OR significant change detected:
+    CREATE REPORT dengan status:
+    
+    IF telegram alert AKTIF:
+        → Try send telegram
+        → Status = "Terkirim" (API success) 
+        → Status = "Gagal Terkirim" (API failed)
+    ELSE:
+        → Skip telegram send
+        → Status = "-" (tercatat tapi tidak dikirim)
+ELSE:
+    → No report created (perubahan minor < threshold)
+```
+
+**D. Bersihkan Report Feature**
+- Button " Bersihkan Report" (danger style, red button)
+- Confirmation modal: "Semua data Report akan terhapus. Apakah anda yakin mau menghapusnya?"
+- Actions:
+  - **Confirm** → DELETE all reports → success message
+  - **Cancel** → close modal, no action
+- Endpoint: `DELETE /reports/clear-all`
+- Irreversible action (no soft delete, no backup)
+
+#### File yang Dibuat
+
+1. **app/Http/Controllers/ReportController.php** - Controller untuk Report Gangguan (index, clearAll)
+2. **resources/js/Pages/Reports/Index.vue** - UI modul Report Gangguan dengan table + bersihkan button
+
+#### File yang Diubah
+
+1. **app/Services/ForwardChainingService.php** - Add significant change detection logic
+2. **app/Services/TelegramAlertService.php** - Update to always log (conditional send)
+3. **resources/js/Components/Sidebar.vue** - Add menu item "Report Gangguan"
+4. **routes/web.php** - Add routes `/reports` dan `/reports/clear-all`
+5. **app/Http/Controllers/AlertController.php** - Remove history logic (keep settings only)
+6. **resources/js/Pages/Alerts/Index.vue** - Remove history table section
+7. **LOGupdate.md** - Document Update #12
+
+#### Implementasi Teknis
+
+**A. ReportController**
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\AlertLog;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+class ReportController extends Controller
+{
+    /**
+     * Display report list dengan pagination, search, date filter.
+     * Default: 7 hari terakhir untuk performa optimal.
+     */
+    public function index(Request $request)
+    {
+        $search = $request->input('search');
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+        
+        // Default filter: 7 hari terakhir
+        $isDefaultFilter = !$dateFrom && !$dateTo;
+        if ($isDefaultFilter) {
+            $dateFrom = now()->subDays(7)->format('Y-m-d');
+        }
+        
+        $reports = AlertLog::with(['device', 'rule'])
+            ->when($search, function($query, $search) {
+                $query->where(function($q) use ($search) {
+                    $q->whereHas('device', function($dq) use ($search) {
+                        $dq->where('customer_name', 'like', "%{$search}%")
+                           ->orWhere('ip_address', 'like', "%{$search}%");
+                    })->orWhereHas('rule', function($rq) use ($search) {
+                        $rq->where('code', 'like', "%{$search}%")
+                           ->orWhere('name', 'like', "%{$search}%");
+                    });
+                });
+            })
+            ->when($dateFrom, function($query, $dateFrom) {
+                $query->whereDate('detected_at', '>=', $dateFrom);
+            })
+            ->when($dateTo, function($query, $dateTo) {
+                $query->whereDate('detected_at', '<=', $dateTo);
+            })
+            ->latest('detected_at')
+            ->paginate(15)
+            ->withQueryString();
+        
+        return Inertia::render('Reports/Index', [
+            'reports' => $reports,
+            'search' => $search,
+            'dateFrom' => $request->input('date_from'),
+            'dateTo' => $dateTo,
+            'isDefaultFilter' => $isDefaultFilter,
+        ]);
+    }
+    
+    /**
+     * Delete all reports dengan konfirmasi.
+     * High-risk action: irreversible data loss.
+     */
+    public function clearAll()
+    {
+        AlertLog::truncate();
+        
+        return redirect()->back()->with('success', 'Semua data report berhasil dihapus.');
+    }
+}
+```
+
+**B. Significant Change Detection Algorithm**
+
+```php
+// ForwardChainingService.php - method evaluateAllRules()
+
+// Setelah evaluate rule dan dapat matched issues
+foreach ($matchedIssues as $issue) {
+    // Get last report untuk kombinasi device + rule ini
+    $lastReport = AlertLog::where('device_id', $issue->device_id)
+        ->where('rule_id', $issue->rule_id)
+        ->latest('detected_at')
+        ->first();
+    
+    // CASE 1: Rule baru match (belum pernah tercatat untuk device ini)
+    if (!$lastReport) {
+        $this->createReportWithStatus($issue);
+        continue;
+    }
+    
+    // CASE 2: Rule sudah pernah match, cek significant change
+    $isSignificant = false;
+    
+    // Check bandwidth change (≥10 Mbps)
+    if ($issue->bandwidth_actual !== null && $lastReport->bandwidth_actual !== null) {
+        $bwDiff = abs($issue->bandwidth_actual - $lastReport->bandwidth_actual);
+        if ($bwDiff >= 10) {
+            $isSignificant = true;
+        }
+    }
+    
+    // Check latency change (≥10 ms)
+    if ($issue->latency_actual !== null && $lastReport->latency_actual !== null) {
+        $latDiff = abs($issue->latency_actual - $lastReport->latency_actual);
+        if ($latDiff >= 10) {
+            $isSignificant = true;
+        }
+    }
+    
+    // Check packet loss change (≥10%)
+    if ($issue->packet_loss_actual !== null && $lastReport->packet_loss_actual !== null) {
+        $plDiff = abs($issue->packet_loss_actual - $lastReport->packet_loss_actual);
+        if ($plDiff >= 10) {
+            $isSignificant = true;
+        }
+    }
+    
+    // Create report only if change is significant
+    if ($isSignificant) {
+        $this->createReportWithStatus($issue);
+    }
+}
+
+/**
+ * Create report dengan status berdasarkan telegram enabled/disabled.
+ * Report ALWAYS created, telegram send conditional.
+ */
+private function createReportWithStatus($issue)
+{
+    $telegramEnabled = config('services.telegram.enabled', false);
+    $status = '-';
+    
+    if ($telegramEnabled) {
+        try {
+            $sent = $this->telegramService->sendAlert($issue);
+            $status = $sent ? 'Terkirim' : 'Gagal Terkirim';
+        } catch (\Exception $e) {
+            $status = 'Gagal Terkirim';
+            Log::error('Telegram send failed', ['error' => $e->getMessage()]);
+        }
+    }
+    
+    AlertLog::create([
+        'device_id' => $issue->device_id,
+        'rule_id' => $issue->rule_id,
+        'bandwidth_actual' => $issue->bandwidth_actual,
+        'latency_actual' => $issue->latency_actual,
+        'packet_loss_actual' => $issue->packet_loss_actual,
+        'status' => $status,
+        'detected_at' => now(),
+    ]);
+}
+```
+
+**C. Bersihkan Report UI**
+
+```vue
+<!-- Reports/Index.vue -->
+<template>
+  <Head title="Report Gangguan" />
+  <div class="page-container">
+    <div class="page-header">
+      <h2>Report Gangguan</h2>
+      <button @click="confirmClearAll" class="btn btn-danger">
+        🗑️ Bersihkan Report
+      </button>
+    </div>
+    
+    <!-- Table, search, filter sama seperti IssueLog -->
+  </div>
+</template>
+
+<script setup>
+import { router } from '@inertiajs/vue3';
+
+function confirmClearAll() {
+  if (confirm('Semua data Report akan terhapus. Apakah anda yakin mau menghapusnya?')) {
+    router.delete('/reports/clear-all', {
+      onSuccess: () => {
+        alert('Semua data report berhasil dihapus.');
+      },
+      onError: () => {
+        alert('Gagal menghapus data report.');
+      }
+    });
+  }
+}
+</script>
+```
+
+**D. Routes**
+
+```php
+// routes/web.php
+Route::middleware('auth')->group(function () {
+    // ... existing routes
+    
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::delete('/reports/clear-all', [ReportController::class, 'clearAll'])->name('reports.clear');
+});
+```
+
+#### Decision Tree Logic
+
+```
+Gangguan detected (rule match dengan metrics)
+│
+├─ Query last report: device_id + rule_id
+│  │
+│  ├─ NOT FOUND (rule baru match)?
+│  │  └─ CREATE REPORT ✅ (always record first detection)
+│  │
+│  └─ FOUND (rule sudah pernah match)?
+│     │
+│     ├─ Calculate diff untuk setiap parameter:
+│     │  - |current_bw - last_bw| ≥ 10 Mbps?
+│     │  - |current_lat - last_lat| ≥ 10 ms?
+│     │  - |current_pl - last_pl| ≥ 10%?
+│     │
+│     ├─ ANY parameter ≥ threshold?
+│     │  └─ YES → CREATE REPORT ✅ (significant change)
+│     │
+│     └─ ALL parameters < threshold?
+│        └─ NO REPORT ❌ (minor change, skip)
+│
+└─ CREATE REPORT flow:
+   │
+   ├─ Telegram enabled?
+   │  ├─ YES → Send telegram
+   │  │       ├─ Success → status = "Terkirim"
+   │  │       └─ Failed → status = "Gagal Terkirim"
+   │  │
+   │  └─ NO → Skip send → status = "-"
+   │
+   └─ Insert to alert_logs table
+```
+
+#### Testing Scenarios
+
+**Test Case 1: Rule Baru Match (First Detection)**
+```
+Device A - Rule R05 (belum pernah match sebelumnya)
+Current: BW 85 Mbps, Latency 50 ms
+
+Query: SELECT * FROM alert_logs WHERE device_id=A AND rule_id=R05
+Result: NULL (no previous report)
+
+→ CREATE REPORT ✅
+→ Status: "Terkirim" (telegram ON) / "-" (telegram OFF)
+```
+
+**Test Case 2: Significant Change - Bandwidth**
+```
+Last report: Device A - Rule R01, BW 85 Mbps
+Current: Device A - Rule R01, BW 97 Mbps
+
+Diff: |97 - 85| = 12 Mbps ≥ 10 → SIGNIFICANT
+
+→ CREATE REPORT ✅
+→ Status based on telegram setting
+```
+
+**Test Case 3: Minor Change - Skip**
+```
+Last report: Device A - Rule R01, BW 85 Mbps
+Current: Device A - Rule R01, BW 88 Mbps
+
+Diff: |88 - 85| = 3 Mbps < 10 → NOT SIGNIFICANT
+
+→ NO REPORT ❌ (skip, no database insert)
+```
+
+**Test Case 4: Multiple Parameters - One Significant**
+```
+Last report: Device A - Rule R01
+  - BW: 85 Mbps
+  - Latency: 50 ms
+
+Current: Device A - Rule R01
+  - BW: 87 Mbps (diff=2, not significant)
+  - Latency: 65 ms (diff=15 ≥ 10, SIGNIFICANT)
+
+→ At least ONE param significant
+→ CREATE REPORT ✅
+```
+
+**Test Case 5: Different Rule Same Device**
+```
+Last report: Device A - Rule R01, BW 85 Mbps
+Current match: Device A - Rule R03, BW 87 Mbps
+
+Query scope: device_id=A AND rule_id=R03 → NULL (different rule)
+
+→ NEW RULE MATCH
+→ CREATE REPORT ✅
+```
+
+**Test Case 6: Bersihkan Report**
+```
+User di halaman /reports
+→ Klik button "🗑️ Bersihkan Report"
+→ Browser confirm popup: "Semua data Report akan terhapus..."
+→ User klik "OK"
+→ DELETE FROM alert_logs (truncate table)
+→ Redirect back dengan flash message: "Semua data report berhasil dihapus"
+→ Table kosong
+```
+
+**Test Case 7: Telegram Disabled - Report Still Created**
+```
+Telegram alert: NONAKTIF
+Current: Device A - Rule R01 match (rule baru / significant change)
+
+→ CREATE REPORT ✅
+→ Skip telegram send
+→ Status = "-"
+→ Data tetap tersimpan di database untuk tracking
+```
+
+#### Requirements Implemented
+
+1. ✅ Modul dedicated "Report Gangguan" (separate page)
+2. ✅ Significant change detection (threshold ±10)
+3. ✅ Rule baru match always recorded
+4. ✅ Status field logic: "Terkirim" / "Gagal Terkirim" / "-"
+5. ✅ Report tercatat walau telegram nonaktif (unconditional logging)
+6. ✅ Bersihkan Report dengan konfirmasi popup
+7. ✅ Search by customer name, IP, rule code/name
+8. ✅ Date filter (default 7 hari terakhir)
+9. ✅ Pagination (15 per page)
+10. ✅ Export PDF (reuse existing PDF template)
+
+#### Benefits
+
+**UX Improvement:**
+- Settings dan history terpisah → halaman lebih clean
+- Dedicated report page → easier navigation
+- Bulk delete → clean up old data quickly
+
+**Data Quality:**
+- Hanya perubahan meaningful tercatat → no spam
+- Rule baru always tracked → no missing first detection
+- Unconditional logging → data tidak loss walau telegram OFF
+
+**Performance:**
+- Fewer DB writes (skip minor changes)
+- Database size reduced (no spam records)
+- Query faster (less data to scan)
+
+**Operational:**
+- Tracking tetap jalan walau telegram mati
+- Historical data preserved for analysis
+- Easy cleanup with Bersihkan Report
+
+#### Impact
+
+- Risk: **LOW** (new module, tidak mengubah existing flow)
+- Benefit: **VERY HIGH** (better UX, meaningful data, no spam, operational flexibility)
+- Performance: **IMPROVED** (fewer DB writes, smaller table size)
+- Breaking Changes: **NONE** (additive feature, Alert module tetap functional)
+
+#### Migration Strategy
+
+**Phase 1: Create Report Module**
+- Build ReportController + Routes
+- Build Reports/Index.vue UI
+- Add sidebar menu
+- Keep Alert module unchanged (parallel run)
+
+**Phase 2: Update Logging Logic**
+- Implement significant change detection
+- Update ForwardChainingService
+- Test with existing data
+
+**Phase 3: Clean Alert Module**
+- Remove history table dari Alert/Index.vue
+- Keep only settings (telegram config)
+- Update documentation
+
+**Phase 4: Production Rollout**
+- Deploy all changes
+- Monitor report creation rate
+- Tune threshold if needed
+
+#### Catatan Tambahan
+
+**Threshold Configuration:**
+- Current: Hardcoded ±10 untuk semua parameter
+- Rationale: Balance between sensitivity dan spam reduction
+- Future: Make configurable via .env or UI settings
+
+**Database Schema:**
+- Reuse existing `alert_logs` table (no migration needed)
+- Columns: device_id, rule_id, bandwidth_actual, latency_actual, packet_loss_actual, status, detected_at
+
+**Status Field Values:**
+- `"Terkirim"` - Telegram sent successfully
+- `"Gagal Terkirim"` - Telegram send failed (API error, network issue)
+- `"-"` - Telegram disabled, report logged only
+
+**Alternative Approaches Not Implemented:**
+- Time-based deduplication (e.g., max 1 report per 5 min per device+rule)
+- Soft delete untuk Bersihkan Report (keep backup, restore option)
+- Gradual change tracking (detect slow degradation 85→87→89→91)
+- Configurable threshold per rule (advanced feature)
+
+**Security Considerations:**
+- Bersihkan Report: Irreversible action, consider role-based access
+- Export PDF: Same security as existing export feature
+- No sensitive data exposed in reports (only metrics)
+
+**Performance Considerations:**
+- Default 7 days filter prevents slow queries on large dataset
+- Pagination keeps response size manageable
+- Index on `device_id`, `rule_id`, `detected_at` recommended
+
+**Future Enhancements:**
+- Configurable threshold via UI (per parameter or per rule)
+- Auto-cleanup old reports (e.g., >30 days, configurable retention)
+- Export to Excel/CSV format
+- Report analytics dashboard (trend charts, summary stats)
+- Notification summary (daily/weekly digest email)
+- Soft delete with 30-day recovery window
+- Bulk actions (delete by date range, by device, by rule)
+
+**Estimasi Waktu Implementasi:** 4-5 jam (coding + testing + cleanup)
+**Status:** DOCUMENTED - Ready for Implementation
+
+---
+
 ## 2026-10-28 (Update #11)
 
 ### FITUR BARU: Bandwidth Detection via MikroTik Simple Queue

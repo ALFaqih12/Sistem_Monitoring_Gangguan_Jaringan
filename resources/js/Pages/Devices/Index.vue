@@ -3,9 +3,6 @@
   <div class="page-container">
     <div class="page-header">
       <h2>Manajemen Target Device</h2>
-      <button v-if="!discoveryMode" class="btn btn-primary" @click="toggleForm">
-        {{ isFormOpen ? 'Tutup Form' : '+ Tambah Device' }}
-      </button>
     </div>
 
     <div v-if="page.props.flash?.success" class="alert alert-success">{{ page.props.flash.success }}</div>
@@ -34,8 +31,8 @@
     <!-- Manual Add Mode (existing) -->
     <div v-show="!discoveryMode">
       <div class="card" v-show="isFormOpen">
+        <h3 class="form-title" style="margin: 0 0 20px 0; padding: 0; border: none;">Tambah Device Target</h3>
         <form @submit.prevent="submit" class="form">
-          <h3 class="form-title">Tambah Device Target</h3>
           <div class="form-group">
             <label>IP Address Target</label>
             <div class="form-row">
@@ -71,6 +68,7 @@
           </div>
 
           <div class="form-actions">
+            <button type="button" class="btn btn-secondary" @click="toggleForm">Kembali</button>
             <button type="submit" class="btn btn-primary" :disabled="!canSubmit">Simpan Device</button>
           </div>
         </form>
@@ -79,17 +77,18 @@
       <div class="card" v-show="!isFormOpen">
         <div class="card-header">
           <h3>Daftar Target Device</h3>
-          <div class="table-toolbar">
-            <div class="search-form">
-              <input
-                type="text"
-                v-model="searchText"
-                class="form-input"
-                placeholder="Cari ID, Nama, IP, Model..."
-              />
-              <button type="button" class="btn btn-primary btn-sm" @click="doSearch">Cari</button>
-              <button v-if="searchText" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">Reset</button>
-            </div>
+        </div>
+        <div class="table-toolbar">
+          <button type="button" class="btn btn-primary" @click="toggleForm">+ Tambah Device</button>
+          <div class="search-form">
+            <input
+              type="text"
+              v-model="searchText"
+              class="form-input"
+              placeholder="Cari ID, Nama, IP, Model..."
+            />
+            <button type="button" class="btn btn-primary btn-sm" @click="doSearch">Cari</button>
+            <button v-if="searchText" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">Reset</button>
           </div>
         </div>
 

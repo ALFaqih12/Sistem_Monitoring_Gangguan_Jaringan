@@ -3,16 +3,6 @@
   <div class="page-container">
     <div class="page-header">
       <h2>Log Gangguan Terdeteksi</h2>
-      <div class="search-form">
-        <input
-          v-model="searchText"
-          class="form-input"
-          placeholder="Cari: nama pelanggan, IP, kode rule..."
-          @keyup.enter="doSearch"
-        />
-        <button type="button" class="btn btn-primary btn-sm" @click="doSearch">Cari</button>
-        <button v-if="searchText" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">Reset</button>
-      </div>
     </div>
 
     <div class="auto-refresh-bar">
@@ -23,15 +13,29 @@
       <button class="btn btn-ghost btn-sm" @click="refreshLogs">Refresh Manual</button>
     </div>
 
-    <div class="filter-form">
-      <input v-model="dateFrom" type="date" class="form-input" style="width: 160px;" />
-      <input v-model="dateTo" type="date" class="form-input" style="width: 160px;" />
-      <button type="button" class="btn btn-secondary btn-sm" @click="applyDateFilter">Filter</button>
-      <button type="button" class="btn btn-ghost btn-sm" @click="clearDateFilter">Clear</button>
+    <!-- Filter bar dengan date filter di kiri dan search di kanan -->
+    <div class="filter-bar">
+      <div class="filter-left">
+        <input v-model="dateFrom" type="date" class="form-input" style="width: 160px;" />
+        <input v-model="dateTo" type="date" class="form-input" style="width: 160px;" />
+        <button type="button" class="btn btn-secondary btn-sm" @click="applyDateFilter">Filter</button>
+        <button type="button" class="btn btn-ghost btn-sm" @click="clearDateFilter">Clear</button>
+      </div>
+      <div class="filter-right">
+        <input
+          v-model="searchText"
+          class="form-input"
+          placeholder="Cari: nama pelanggan, IP, kode rule..."
+          @keyup.enter="doSearch"
+          style="width: 300px;"
+        />
+        <button type="button" class="btn btn-primary btn-sm" @click="doSearch">Cari</button>
+        <button v-if="searchText" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">Reset</button>
+      </div>
     </div>
 
     <div class="card">
-      <div class="table-responsive">
+      <div class="table-scroll-container">
         <table>
           <thead>
             <tr>
@@ -44,7 +48,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="log in (logs?.data ?? [])" :key="log.id">
+            <tr v-for="log in displayedLogs" :key="log.id">
                <!-- Format waktu DD/MM/YYYY HH:MM (misal: 01/09/2026 15:22).
                     Menggunakan accessor model detected_at_formatted yang sudah
                     diformat di backend dengan timezone aplikasi (config('app.timezone')).
@@ -87,7 +91,7 @@
                 <span v-else class="text-muted">Tidak ada lokasi</span>
               </td>
             </tr>
-            <tr v-if="(logs?.data?.length ?? 0) === 0">
+            <tr v-if="displayedLogs.length === 0">
               <td colspan="6" class="empty-row">
                 Tidak ada log gangguan terdeteksi.
                 <template v-if="searchText"> Pencarian: "{{ searchText }}".</template>
@@ -97,29 +101,21 @@
           </tbody>
         </table>
       </div>
-
-      <div v-if="logs?.meta?.last_page > 1" class="pagination-wrapper">
-        <div class="pagination-info">Halaman {{ logs?.meta?.current_page }} dari {{ logs?.meta?.last_page }} — Total {{ logs?.meta?.total }} log</div>
-        <ul class="pagination">
-          <li v-for="link in (logs?.links ?? [])" :key="link.label">
-            <Link v-if="link.url" :href="link.url" :class="{ active: link.active }">{{ link.label }}</Link>
-            <span v-else :class="{ active: link.active }" class="pagination-disabled">{{ link.label }}</span>
-          </li>
-        </ul>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 
 const props = defineProps({
-  logs: { type: Object, default: () => ({}) },
+  logs: { type: [Array, Object], default: () => [] },
+  total: { type: Number, default: 0 },
   search: { type: String, default: '' },
   dateFrom: { type: String, default: '' },
   dateTo: { type: String, default: '' },
+  isDefaultFilter: { type: Boolean, default: false },
 });
 
 const page = usePage();
@@ -127,9 +123,19 @@ const page = usePage();
 const searchText = ref(props.search);
 const dateFrom = ref(props.dateFrom);
 const dateTo = ref(props.dateTo);
+const total = ref(props.total);
+const isDefaultFilter = ref(props.isDefaultFilter);
 
 const isRefreshing = ref(false);
 const lastUpdated = ref('-');
+
+// Computed untuk handle data structure (array atau object dengan data property)
+const displayedLogs = computed(() => {
+  if (Array.isArray(page.props.logs)) {
+    return page.props.logs;
+  }
+  return page.props.logs?.data ?? [];
+});
 
 function formatTime() {
   return new Date().toLocaleTimeString('id-ID', {
@@ -145,6 +151,7 @@ function truncate(str, n) {
   return str.length > n ? str.slice(0, n) + '...' : str;
 }
 
+// Auto-refresh logs via AJAX (update data tanpa reload page)
 async function refreshLogs() {
   isRefreshing.value = true;
   const params = new URLSearchParams();
@@ -156,7 +163,11 @@ async function refreshLogs() {
     const res = await fetch(`/api/issue-logs?${params.toString()}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    page.props.logs = data;
+    
+    // Update page props dengan data baru
+    page.props.logs = data.data;
+    total.value = data.total;
+    isDefaultFilter.value = data.isDefaultFilter;
     lastUpdated.value = formatTime();
   } catch (e) {
     console.error('Gagal fetch issue logs:', e);
@@ -166,6 +177,7 @@ async function refreshLogs() {
   }
 }
 
+// Filter actions dengan Inertia router (full page reload dengan filter params)
 function doSearch() {
   router.get('/issue-logs', { search: searchText.value, date_from: dateFrom.value, date_to: dateTo.value });
 }
@@ -182,6 +194,7 @@ function clearDateFilter() {
   router.get('/issue-logs', { search: searchText.value });
 }
 
+// Auto-refresh setup: refresh setiap 60 detik
 let intervalId = null;
 onMounted(() => {
   lastUpdated.value = formatTime();
@@ -231,17 +244,79 @@ lastUpdated.value = formatTime();
   100% { opacity: 1; }
 }
 
-/* Filter form (lebar khusus untuk input tanggal) */
-.filter-form {
+/* Filter bar dengan date filter kiri dan search kanan */
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.filter-left {
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 20px;
+}
+.filter-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .form-input {
-  width: 160px;
   padding: 8px 10px;
+}
+
+/* Scrollable table container dengan fixed height */
+.table-scroll-container {
+  max-height: 600px;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+/* Sticky table header */
+.table-scroll-container table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-scroll-container thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg);
+}
+
+.table-scroll-container thead th {
+  background: var(--color-bg);
+  border-bottom: 2px solid var(--color-border);
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+/* Smooth scroll behavior */
+.table-scroll-container {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar styling */
+.table-scroll-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.table-scroll-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+.table-scroll-container::-webkit-scrollbar-thumb {
+  background: #bdc3c7;
+  border-radius: 4px;
+}
+.table-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #95a5a6;
 }
 
 /* Badge khusus IssueLogs (warna abu-abu, berbeda dari global) */

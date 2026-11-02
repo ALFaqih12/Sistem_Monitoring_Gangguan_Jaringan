@@ -6,6 +6,7 @@ use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\RuleController;
 use App\Http\Controllers\IssueLogController;
 use App\Http\Controllers\AlertController;
+use App\Http\Controllers\ReportController;
 
 // Route utama Dashboard (root /)
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard.index');
@@ -49,6 +50,9 @@ Route::post('/alerts', [AlertController::class, 'store'])->name('alerts.store');
 Route::post('/alerts/toggle', [AlertController::class, 'toggle'])->name('alerts.toggle');
 Route::post('/alerts/test-connection', [AlertController::class, 'testConnection'])->name('alerts.test-connection');
 Route::post('/alerts/test-alert', [AlertController::class, 'sendTestAlert'])->name('alerts.test-alert');
-Route::get('/alerts/export-pdf', [AlertController::class, 'exportPdf'])->name('alerts.export-pdf');
-Route::post('/alerts/{alertLog}/resend', [AlertController::class, 'resend'])->name('alerts.resend');
-Route::get('/alerts/{alertLog}', [AlertController::class, 'show'])->name('alerts.show');
+
+// Routes untuk Modul Report Gangguan
+Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+Route::get('/reports/export-pdf', [ReportController::class, 'exportPdf'])->name('reports.export-pdf');
+Route::delete('/reports/clear-all', [ReportController::class, 'clearAll'])->name('reports.clear');
+Route::get('/api/reports/stats-today', [ReportController::class, 'statsToday']);
