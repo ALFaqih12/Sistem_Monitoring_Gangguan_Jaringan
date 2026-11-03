@@ -30,9 +30,12 @@ return [
     | to expire immediately when the browser is closed then you may
     | indicate that via the expire_on_close configuration option.
     |
+    | CUSTOM: Set to 525600 (1 year) untuk unlimited session.
+    | Monitoring berjalan 24/7, admin tidak perlu login ulang.
+    |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    'lifetime' => (int) env('SESSION_LIFETIME', 525600),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

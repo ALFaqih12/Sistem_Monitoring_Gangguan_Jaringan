@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\RuleController;
@@ -8,51 +10,69 @@ use App\Http\Controllers\IssueLogController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\ReportController;
 
-// Route utama Dashboard (root /)
-Route::get('/', [DashboardController::class, 'index'])->name('dashboard.index');
+// Guest routes (tidak perlu login)
+Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'authenticate']);
 
-// Routes untuk Modul Target Device
-Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
-Route::get('/devices/create', function () {
-    return redirect()->route('devices.index');
-})->name('devices.create');
-Route::post('/devices', [DeviceController::class, 'store'])->name('devices.store');
-Route::post('/devices/ping', [DeviceController::class, 'pingDevice'])->name('devices.ping');
-Route::get('/devices/{device}/edit', [DeviceController::class, 'edit'])->name('devices.edit');
-Route::put('/devices/{device}', [DeviceController::class, 'update'])->name('devices.update');
-Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
-
-// Routes untuk Discovery via MikroTik Core Router
-Route::post('/devices/test-core-router', [DeviceController::class, 'testCoreRouter'])->name('devices.test-core-router');
-Route::post('/devices/connect-core-router', [DeviceController::class, 'connectCoreRouter'])->name('devices.connect-core-router');
-Route::post('/devices/add-client', [DeviceController::class, 'addClientDevice'])->name('devices.add-client');
-
-// Routes untuk Modul Rule Forward Chaining
-Route::get('/rules', [RuleController::class, 'index'])->name('rules.index');
-Route::get('/rules/create', [RuleController::class, 'create'])->name('rules.create');
-Route::post('/rules', [RuleController::class, 'store'])->name('rules.store');
-Route::get('/rules/{rule}/edit', [RuleController::class, 'edit'])->name('rules.edit');
-Route::put('/rules/{rule}', [RuleController::class, 'update'])->name('rules.update');
-Route::delete('/rules/{rule}', [RuleController::class, 'destroy'])->name('rules.destroy');
-Route::post('/rules/{rule}/toggle', [RuleController::class, 'toggle'])->name('rules.toggle');
-
-// Routes untuk Modul Log Gangguan
-Route::get('/issue-logs', [IssueLogController::class, 'index'])->name('issue-logs.index');
-// API endpoint untuk auto-refresh UI via AJAX (fetch data tiap 30 detik)
-Route::get('/api/issue-logs', [IssueLogController::class, 'indexApi'])->name('api.issue-logs.index');
-
-// Route AJAX untuk toggle monitoring di Dashboard
-Route::post('/monitoring/toggle', [DashboardController::class, 'toggleMonitoring'])->name('monitoring.toggle');
-
-// Routes untuk Modul Manajemen Alert
-Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
-Route::post('/alerts', [AlertController::class, 'store'])->name('alerts.store');
-Route::post('/alerts/toggle', [AlertController::class, 'toggle'])->name('alerts.toggle');
-Route::post('/alerts/test-connection', [AlertController::class, 'testConnection'])->name('alerts.test-connection');
-Route::post('/alerts/test-alert', [AlertController::class, 'sendTestAlert'])->name('alerts.test-alert');
-
-// Routes untuk Modul Report Gangguan
-Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
-Route::get('/reports/export-pdf', [ReportController::class, 'exportPdf'])->name('reports.export-pdf');
-Route::delete('/reports/clear-all', [ReportController::class, 'clearAll'])->name('reports.clear');
-Route::get('/api/reports/stats-today', [ReportController::class, 'statsToday']);
+// Authenticated routes (perlu login)
+Route::middleware('auth')->group(function () {
+    // Logout
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    
+    // Kelola Admin
+    Route::get('/admin/profile', [AdminController::class, 'index'])->name('admin.profile');
+    Route::put('/admin/update', [AdminController::class, 'update'])->name('admin.update');
+    
+    // Monitoring status & heartbeat
+    Route::get('/monitoring/status', [DashboardController::class, 'checkStatus'])->name('monitoring.status');
+    Route::post('/monitoring/heartbeat', [DashboardController::class, 'heartbeat'])->name('monitoring.heartbeat');
+    
+    // Route utama Dashboard (root /)
+    Route::get('/', [DashboardController::class, 'index'])->name('dashboard.index');
+    
+    // Routes untuk Modul Target Device
+    Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+    Route::get('/devices/create', function () {
+        return redirect()->route('devices.index');
+    })->name('devices.create');
+    Route::post('/devices', [DeviceController::class, 'store'])->name('devices.store');
+    Route::post('/devices/ping', [DeviceController::class, 'pingDevice'])->name('devices.ping');
+    Route::get('/devices/{device}/edit', [DeviceController::class, 'edit'])->name('devices.edit');
+    Route::put('/devices/{device}', [DeviceController::class, 'update'])->name('devices.update');
+    Route::delete('/devices/{device}', [DeviceController::class, 'destroy'])->name('devices.destroy');
+    
+    // Routes untuk Discovery via MikroTik Core Router
+    Route::post('/devices/test-core-router', [DeviceController::class, 'testCoreRouter'])->name('devices.test-core-router');
+    Route::post('/devices/connect-core-router', [DeviceController::class, 'connectCoreRouter'])->name('devices.connect-core-router');
+    Route::post('/devices/add-client', [DeviceController::class, 'addClientDevice'])->name('devices.add-client');
+    
+    // Routes untuk Modul Rule Forward Chaining
+    Route::get('/rules', [RuleController::class, 'index'])->name('rules.index');
+    Route::get('/rules/create', [RuleController::class, 'create'])->name('rules.create');
+    Route::post('/rules', [RuleController::class, 'store'])->name('rules.store');
+    Route::get('/rules/{rule}/edit', [RuleController::class, 'edit'])->name('rules.edit');
+    Route::put('/rules/{rule}', [RuleController::class, 'update'])->name('rules.update');
+    Route::delete('/rules/{rule}', [RuleController::class, 'destroy'])->name('rules.destroy');
+    Route::post('/rules/{rule}/toggle', [RuleController::class, 'toggle'])->name('rules.toggle');
+    
+    // Routes untuk Modul Log Gangguan
+    Route::get('/issue-logs', [IssueLogController::class, 'index'])->name('issue-logs.index');
+    // API endpoint untuk auto-refresh UI via AJAX (fetch data tiap 30 detik)
+    Route::get('/api/issue-logs', [IssueLogController::class, 'indexApi'])->name('api.issue-logs.index');
+    
+    // Route AJAX untuk toggle monitoring di Dashboard
+    Route::post('/monitoring/toggle', [DashboardController::class, 'toggleMonitoring'])->name('monitoring.toggle');
+    
+    // Routes untuk Modul Manajemen Alert
+    Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
+    Route::post('/alerts', [AlertController::class, 'store'])->name('alerts.store');
+    Route::post('/alerts/toggle', [AlertController::class, 'toggle'])->name('alerts.toggle');
+    Route::post('/alerts/test-connection', [AlertController::class, 'testConnection'])->name('alerts.test-connection');
+    Route::post('/alerts/test-alert', [AlertController::class, 'sendTestAlert'])->name('alerts.test-alert');
+    
+    // Routes untuk Modul Report Gangguan
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('/reports/export-pdf', [ReportController::class, 'exportPdf'])->name('reports.export-pdf');
+    Route::delete('/reports/clear-all', [ReportController::class, 'clearAll'])->name('reports.clear');
+    Route::get('/api/reports/stats-today', [ReportController::class, 'statsToday']);
+});

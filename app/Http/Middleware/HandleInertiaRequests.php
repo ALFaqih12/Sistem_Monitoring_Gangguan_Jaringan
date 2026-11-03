@@ -49,6 +49,11 @@ class HandleInertiaRequests extends Middleware
             // Old input hasil withInput() — agar form kembali berisi data lama bila
             // validasi gagal via redirect-back. Meniru fungsi old() pada Blade.
             'old' => $request->old(),
+            
+            // Auth user (share ke semua halaman)
+            'auth' => [
+                'user' => $request->user(),
+            ],
         ];
     }
 }

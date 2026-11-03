@@ -131,4 +131,29 @@ class DashboardController extends Controller
             Log::error('Dashboard: Gagal stopWorker - ' . $e->getMessage());
         }
     }
+
+    /**
+     * Check monitoring status untuk logout safeguard.
+     * Return JSON status monitoring aktif atau tidak.
+     */
+    public function checkStatus()
+    {
+        return response()->json([
+            'is_running' => Cache::get('monitoring_active', false)
+        ]);
+    }
+
+    /**
+     * Heartbeat dari frontend untuk tracking web activity.
+     * Update timestamp terakhir web masih terbuka.
+     * Digunakan untuk auto stop monitoring jika web tertutup >20 menit.
+     */
+    public function heartbeat()
+    {
+        if (Cache::get('monitoring_active')) {
+            Cache::put('monitoring_last_heartbeat', now()->timestamp);
+        }
+        
+        return response()->json(['success' => true]);
+    }
 }

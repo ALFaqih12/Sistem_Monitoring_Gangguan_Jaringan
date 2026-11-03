@@ -53,7 +53,21 @@
             >Report Gangguan</Link
           >
         </li>
+        <li>
+          <Link
+            href="/admin/profile"
+            :className="isActive('Admin') ? 'active' : ''"
+            >Kelola Admin</Link
+          >
+        </li>
       </ul>
+      
+      <!-- Logout Button -->
+      <div class="sidebar-footer">
+        <button @click="handleLogout" class="btn-logout">
+          Logout
+        </button>
+      </div>
     </div>
 
     <!-- KONTEN KANAN (Dinamis): halaman Inertia dirender di slot default -->
@@ -66,12 +80,37 @@
 </template>
 
 <script setup>
-import { usePage } from '@inertiajs/vue3';
+import { usePage, router } from '@inertiajs/vue3';
 
 function isActive(prefix) {
   const page = usePage();
   // usePage().component bisa undefined saat hydration awal; amanin dengan optional chaining
   return page.component?.startsWith(prefix) ?? false;
+}
+
+/**
+ * Logout handler dengan monitoring safeguard.
+ * Check monitoring status sebelum logout.
+ */
+async function handleLogout() {
+  try {
+    // Check monitoring status
+    const response = await fetch('/monitoring/status');
+    const data = await response.json();
+    
+    if (data.is_running) {
+      // Monitoring masih aktif, tampilkan warning
+      alert('Monitoring masih aktif. Harap matikan monitoring terlebih dahulu sebelum logout.');
+      return; // Stay logged in
+    }
+    
+    // Monitoring OFF, aman untuk logout
+    router.post('/logout');
+  } catch (error) {
+    console.error('Error checking monitoring status:', error);
+    // Fallback: tetap logout jika check gagal
+    router.post('/logout');
+  }
 }
 </script>
 
@@ -94,7 +133,6 @@ function isActive(prefix) {
 .sidebar-header {
   text-align: center;
   padding-bottom: 24px;
-  border-bottom: 1px solid #34495e;
   margin-bottom: 24px;
 }
 .sidebar-header h3 {
@@ -105,9 +143,8 @@ function isActive(prefix) {
 }
 .sidebar-subtitle {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: whitesmoke;
   margin-top: 4px;
-  opacity: 0.8;
 }
 .sidebar-menu {
   list-style: none;
@@ -141,6 +178,28 @@ function isActive(prefix) {
   color: var(--color-primary);
   font-weight: var(--font-weight-bold);
   opacity: 1;
+}
+.sidebar-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px;
+}
+.btn-logout {
+  width: 100%;
+  padding: 12px;
+  background: var(--color-danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-logout:hover {
+  background: #c0392b;
 }
 .main-content {
   flex: 1;

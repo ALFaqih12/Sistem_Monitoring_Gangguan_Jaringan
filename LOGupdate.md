@@ -1,3 +1,460 @@
+## 2026-11-03 (Update #13)
+
+### FITUR BARU: Modul Login, Kelola Admin, dan Monitoring Safeguard
+
+#### Deskripsi Fitur
+
+Implementasi sistem autentikasi untuk single admin user dengan fitur kelola kredensial dan monitoring safeguard untuk mencegah logout saat monitoring aktif.
+
+#### Requirements
+
+**User Requirements:**
+- Single user admin (tidak ada role lain)
+- Default credentials: `SiwaNetwork` / `Admin123`
+- Web menampilkan halaman login sebelum akses sistem
+- Fitur logout dengan safeguard monitoring
+- Fitur change username/password
+- Session unlimited (monitoring 24/7)
+- No rate limiting (internal single user)
+- Forgot password: manual via tinker (no UI)
+
+#### Solution Overview
+
+**A. Modul Login**
+- Halaman login standalone (no sidebar)
+- Form: username + password
+- Session unlimited (no timeout)
+- Redirect ke `/dashboard` after login
+- Guest middleware untuk protected routes
+
+**B. Modul Kelola Admin**
+- Route: `/admin/profile`
+- Features:
+  - Change Username (dengan current value display)
+  - Change Password (verify current password)
+- 2 cards terpisah (username + password)
+- Sidebar menu: "Kelola Admin"
+
+**C. Logout dengan Monitoring Safeguard**
+- Manual logout: popup warning jika monitoring ON → stay logged in
+- Popup: Browser native `confirm()` (no custom modal)
+- Monitoring OFF: logout success
+
+**D. Monitoring Auto Stop (Time-based)**
+- Heartbeat mechanism: frontend send ping setiap 5 menit
+- Backend track `monitoring_last_heartbeat` timestamp
+- Scheduler check timeout setiap 5 menit
+- Logic:
+  - Web tertutup <20 menit → monitoring tetap jalan
+  - Web tertutup >20 menit → force stop monitoring
+- Command: `CheckMonitoringTimeout`
+
+#### File yang Dibuat
+
+1. **database/migrations/xxxx_create_admins_table.php** - Table admin (username, password)
+2. **database/seeders/AdminSeeder.php** - Seed default admin
+3. **app/Models/Admin.php** - Admin model
+4. **app/Http/Controllers/AuthController.php** - Login/logout logic
+5. **app/Http/Controllers/AdminController.php** - Profile update (username/password)
+6. **app/Console/Commands/CheckMonitoringTimeout.php** - Auto stop monitoring command
+7. **resources/js/Pages/Auth/Login.vue** - Login page UI
+8. **resources/js/Pages/Admin/Profile.vue** - Kelola Admin page UI
+
+#### File yang Diubah
+
+1. **routes/web.php** - Add auth routes + middleware
+2. **app/Http/Controllers/MonitoringController.php** - Add heartbeat endpoint + status check
+3. **app/Console/Kernel.php** - Register CheckMonitoringTimeout scheduler
+4. **config/session.php** - Set lifetime unlimited
+5. **resources/js/Components/Sidebar.vue** - Add menu "Kelola Admin" + logout handler
+6. **resources/js/app.js** - Heartbeat mechanism (send every 5 min)
+7. **database/seeders/DatabaseSeeder.php** - Call AdminSeeder
+
+#### Implementasi Teknis
+
+**A. Database Schema**
+
+```php
+// Migration: create_admins_table
+Schema::create('admins', function (Blueprint $table) {
+    $table->id();
+    $table->string('username', 50)->unique();
+    $table->string('password'); // bcrypt
+    $table->timestamps();
+});
+
+// Seeder: Default admin
+Admin::create([
+    'username' => 'SiwaNetwork',
+    'password' => bcrypt('Admin123'),
+]);
+```
+
+**B. AuthController**
+
+```php
+// Login
+public function authenticate(Request $request)
+{
+    $credentials = $request->validate([
+        'username' => 'required',
+        'password' => 'required',
+    ]);
+
+    if (Auth::guard('web')->attempt($credentials)) {
+        $request->session()->regenerate();
+        return redirect()->intended('/dashboard');
+    }
+
+    return back()->withErrors(['username' => 'Username atau password salah']);
+}
+
+// Logout
+public function logout(Request $request)
+{
+    Auth::logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+    return redirect('/login');
+}
+```
+
+**C. AdminController**
+
+```php
+// Update username
+public function update(Request $request)
+{
+    $admin = Auth::user();
+    
+    if ($request->has('username')) {
+        $request->validate(['username' => 'required|min:4|unique:admins,username,' . $admin->id]);
+        $admin->username = $request->username;
+        $admin->save();
+        return back()->with('success', 'Username berhasil diubah');
+    }
+    
+    if ($request->has('current_password')) {
+        $request->validate([
+            'current_password' => 'required',
+            'password' => 'required|min:8|confirmed',
+        ]);
+        
+        if (!Hash::check($request->current_password, $admin->password)) {
+            return back()->withErrors(['current_password' => 'Password lama salah']);
+        }
+        
+        $admin->password = bcrypt($request->password);
+        $admin->save();
+        return back()->with('success', 'Password berhasil diubah');
+    }
+}
+```
+
+**D. Monitoring Safeguard - Heartbeat**
+
+```php
+// MonitoringController - Status check
+public function checkStatus()
+{
+    return response()->json([
+        'is_running' => Cache::get('monitoring_active', false)
+    ]);
+}
+
+// MonitoringController - Heartbeat
+public function heartbeat()
+{
+    if (Cache::get('monitoring_active')) {
+        Cache::put('monitoring_last_heartbeat', now()->timestamp);
+    }
+    return response()->json(['success' => true]);
+}
+```
+
+**E. CheckMonitoringTimeout Command**
+
+```php
+public function handle()
+{
+    $isActive = Cache::get('monitoring_active', false);
+    if (!$isActive) return;
+    
+    $lastHeartbeat = Cache::get('monitoring_last_heartbeat');
+    if (!$lastHeartbeat) return;
+    
+    $idleMinutes = (now()->timestamp - $lastHeartbeat) / 60;
+    
+    // Force stop jika idle >20 menit
+    if ($idleMinutes > 20) {
+        Cache::forget('monitoring_active');
+        Cache::forget('monitoring_last_heartbeat');
+        
+        Log::warning('Monitoring force stopped - Web tertutup >20 menit', [
+            'idle_minutes' => round($idleMinutes, 2),
+            'stopped_at' => now(),
+        ]);
+    }
+}
+```
+
+**F. Frontend Heartbeat (app.js)**
+
+```javascript
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    heartbeatInterval = setInterval(async () => {
+        await fetch('/monitoring/heartbeat', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+        });
+    }, 5 * 60 * 1000); // 5 menit
+    
+    // Immediate heartbeat on load
+    fetch('/monitoring/heartbeat', {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrfToken() },
+    });
+}
+
+onMounted(() => {
+    if (isAuthenticated) startHeartbeat();
+});
+```
+
+**G. Logout Handler dengan Safeguard (Sidebar.vue)**
+
+```javascript
+async function handleLogout() {
+    const res = await fetch('/monitoring/status');
+    const data = await res.json();
+    
+    if (data.is_running) {
+        alert('Monitoring masih aktif. Harap matikan monitoring terlebih dahulu sebelum logout.');
+        return; // Stay logged in
+    }
+    
+    router.post('/logout');
+}
+```
+
+**H. Scheduler Registration (Kernel.php)**
+
+```php
+protected function schedule(Schedule $schedule)
+{
+    // Existing: Forward Chaining
+    $schedule->call(function () {
+        app(ForwardChainingService::class)->evaluateAllRules();
+    })->everyMinute();
+    
+    // NEW: Check monitoring timeout
+    $schedule->command('monitoring:check-timeout')->everyFiveMinutes();
+}
+```
+
+#### Design System
+
+**Konsisten dengan Existing:**
+- CSS variables reuse (`var(--color-primary)`, `var(--radius)`, dll)
+- Component classes: `.card`, `.btn`, `.form-group`, `.alert`
+- Typography scale existing (Segoe UI, 11-24px)
+- Color palette sama (primary blue, danger red, success green)
+
+**Login Page:**
+- Center-aligned card (max-width 420px)
+- Background: `var(--color-bg)`
+- Title: "SIWA Network" (28px bold) + subtitle "Monitoring Gangguan Jaringan" (14px secondary)
+- Form card: existing `.card` style
+- Button: `.btn.btn-primary` full-width
+
+**Kelola Admin Page:**
+- 2 cards terpisah (Ubah Username + Ubah Password)
+- Current value display: readonly input
+- Validation inline (`.form-error`)
+- Success message: `.alert.alert-success`
+
+**Professional & Clean:**
+- No emoji
+- No decorative elements
+- Browser native confirm (no custom modal)
+- Functional labels (no ALL-CAPS eyebrow)
+
+#### Routes
+
+```php
+// Guest routes
+Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'authenticate']);
+
+// Authenticated routes
+Route::middleware('auth')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    Route::get('/admin/profile', [AdminController::class, 'index'])->name('admin.profile');
+    Route::put('/admin/update', [AdminController::class, 'update'])->name('admin.update');
+    Route::get('/monitoring/status', [MonitoringController::class, 'checkStatus']);
+    Route::post('/monitoring/heartbeat', [MonitoringController::class, 'heartbeat']);
+    
+    // Existing routes (Device, Rule, IssueLog, Alert, Report)
+});
+```
+
+#### Session Configuration
+
+```php
+// config/session.php
+'lifetime' => 525600, // 1 tahun (unlimited)
+'expire_on_close' => false,
+```
+
+#### Testing Scenarios
+
+**Test Case 1: Login Success**
+```
+1. User akses web → redirect ke /login
+2. Input: SiwaNetwork / Admin123
+3. Submit → session created
+4. Redirect ke /dashboard
+```
+
+**Test Case 2: Login Failed**
+```
+1. Input: SiwaNetwork / WrongPassword
+2. Submit → error message "Username atau password salah"
+3. Stay di /login
+```
+
+**Test Case 3: Change Username**
+```
+1. Login → menu "Kelola Admin"
+2. Card "Ubah Username" → input username baru
+3. Submit → success message
+4. Username updated di DB
+```
+
+**Test Case 4: Change Password**
+```
+1. Input password lama salah → error "Password lama salah"
+2. Input password baru + konfirmasi berbeda → error validation
+3. Input correct → success → password updated (bcrypt)
+```
+
+**Test Case 5: Logout - Monitoring ON**
+```
+1. Monitoring status: ON
+2. Klik logout → popup "Monitoring masih aktif..."
+3. User OK → stay logged in
+4. Manual stop monitoring → klik logout lagi → success
+```
+
+**Test Case 6: Logout - Monitoring OFF**
+```
+1. Monitoring status: OFF
+2. Klik logout → no popup
+3. Session destroyed → redirect /login
+```
+
+**Test Case 7: Heartbeat Active**
+```
+1. User login → web terbuka
+2. Heartbeat sent every 5 menit
+3. Cache 'monitoring_last_heartbeat' updated
+4. Monitoring tetap aktif
+```
+
+**Test Case 8: Monitoring Timeout <20 Min**
+```
+1. Monitoring ON → web terbuka
+2. Close tab → tunggu 15 menit
+3. Scheduler check → idle 15 min < 20 min
+4. Monitoring status: tetap ON
+```
+
+**Test Case 9: Monitoring Timeout >20 Min**
+```
+1. Monitoring ON → web terbuka
+2. Close tab → tunggu 25 menit
+3. Scheduler check → idle 25 min > 20 min
+4. Monitoring force stop → cache cleared
+5. Log warning created
+```
+
+**Test Case 10: Protected Routes**
+```
+1. Guest akses /dashboard → redirect /login
+2. Guest akses /devices → redirect /login
+3. Authenticated akses /login → redirect /dashboard
+```
+
+#### Behavior Summary
+
+| Scenario | Session | Monitoring | Action |
+|----------|---------|------------|--------|
+| First access | None | - | Redirect /login |
+| Login success | Created | - | Redirect /dashboard |
+| Logout manual (monitoring OFF) | Destroyed | - | Redirect /login |
+| Logout manual (monitoring ON) | Active | ON | Popup warning → stay logged in |
+| Web close <20 min | Active | ON | Monitoring tetap jalan |
+| Web close >20 min | Active | OFF | Force stop monitoring |
+| Session timeout | None | - | Never (unlimited) |
+
+#### Requirements Implemented
+
+1. ✅ Single user admin (username: SiwaNetwork, password: Admin123)
+2. ✅ Login required untuk akses sistem
+3. ✅ Logout dengan monitoring safeguard (popup warning)
+4. ✅ Change username/password (di modul Kelola Admin)
+5. ✅ Session unlimited (no timeout)
+6. ✅ No rate limiting
+7. ✅ Forgot password: manual via tinker (no UI)
+8. ✅ Monitoring auto stop time-based (>20 min idle)
+9. ✅ Heartbeat mechanism (every 5 min)
+10. ✅ Design konsisten dengan existing system
+
+#### Impact
+
+- Risk: **LOW** (auth layer standalone, tidak mengubah existing modules)
+- Benefit: **HIGH** (security layer, prevent unauthorized access)
+- Performance: **MINIMAL** (heartbeat lightweight, scheduler check efficient)
+- Breaking Changes: **NONE** (additive feature, existing routes wrap dengan middleware)
+
+#### Catatan Tambahan
+
+**Security:**
+- Password bcrypt default (cost 10)
+- Session regenerate after login (prevent fixation)
+- CSRF protection (Laravel default)
+- Current password verify untuk change password
+
+**Monitoring Safeguard Rationale:**
+- Manual logout: user kontrol penuh, paksa stop monitoring manual
+- Tab close <20 min: toleransi untuk refresh/accident close
+- Tab close >20 min: assume user sudah selesai, auto cleanup
+- Heartbeat 5 min: balance antara network overhead dan responsiveness
+
+**Forgot Password:**
+- No UI (skip complexity)
+- Manual reset via tinker (admin controlled):
+  ```bash
+  php artisan tinker
+  $admin = App\Models\Admin::first();
+  $admin->password = bcrypt('NewPassword123');
+  $admin->save();
+  ```
+
+**Future Enhancement:**
+- Forgot password via OTP email (Gmail SMTP)
+- Activity log (login/logout history)
+- Multi-factor authentication
+- Password strength indicator UI
+
+**Estimasi Waktu Implementasi:** 6-7 jam (coding + testing + integration)
+
+**Status:** DOCUMENTED - Ready for Implementation
+
+---
+
 ## 2026-11-02 (Update #12)
 
 ### FITUR BARU: Modul Report Gangguan dengan Significant Change Detection

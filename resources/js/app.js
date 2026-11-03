@@ -24,7 +24,8 @@ createInertiaApp({
 
         // Jika komponen halaman belum menentukan layout, pakai AppLayout default.
         // Ini meniru perilaku @extends('layouts.app') pada Blade sebelumnya.
-        if (page.default.layout === undefined) {
+        // Exception: Login page tidak pakai layout (standalone)
+        if (page.default.layout === undefined && name !== 'Auth/Login') {
             page.default.layout = AppLayout;
         }
 
@@ -36,11 +37,61 @@ createInertiaApp({
         app.use(plugin);
         app.component('Link', Link);
         app.component('Head', Head);
-        return app.mount(el);
+        
+        // Mount app
+        const mountedApp = app.mount(el);
+        
+        // Start heartbeat untuk monitoring timeout detection
+        startHeartbeat();
+        
+        return mountedApp;
     },
     progress: {
         // Warna progress bar navigasi Inertia, konsisten dengan tema aplikasi.
         color: '#2ecc71',
         showProgressBar: true,
     },
+});
+
+/**
+ * Heartbeat mechanism untuk monitoring timeout detection.
+ * Kirim ping ke backend setiap 5 menit saat user authenticated.
+ * Backend track timestamp untuk auto stop monitoring jika web tertutup >20 menit.
+ */
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    // Send heartbeat setiap 5 menit
+    heartbeatInterval = setInterval(async () => {
+        try {
+            await fetch('/monitoring/heartbeat', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept': 'application/json',
+                },
+            });
+        } catch (error) {
+            console.error('Heartbeat failed:', error);
+        }
+    }, 5 * 60 * 1000); // 5 menit
+    
+    // Send immediate heartbeat on load
+    fetch('/monitoring/heartbeat', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+            'Accept': 'application/json',
+        },
+    }).catch(error => {
+        // Silent fail jika belum login (guest page)
+        console.debug('Initial heartbeat skipped (not authenticated)');
+    });
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
 });

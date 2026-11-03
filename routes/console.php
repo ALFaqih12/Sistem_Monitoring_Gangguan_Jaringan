@@ -21,3 +21,10 @@ Schedule::command('rules:evaluate')
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/forward-chaining.log'));
+
+// Scheduler untuk check monitoring timeout setiap 5 menit
+// Auto stop monitoring jika web tertutup >20 menit (no heartbeat)
+Schedule::command('monitoring:check-timeout')
+    ->everyFiveMinutes()
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/monitoring-timeout.log'));
