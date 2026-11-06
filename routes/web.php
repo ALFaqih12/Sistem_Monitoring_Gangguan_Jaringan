@@ -30,6 +30,9 @@ Route::middleware('auth')->group(function () {
     // Route utama Dashboard (root /)
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard.index');
     
+    // API endpoint untuk monitoring metrics display
+    Route::get('/api/dashboard/metrics', [DashboardController::class, 'getMetrics'])->name('dashboard.metrics');
+    
     // Routes untuk Modul Target Device
     Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
     Route::get('/devices/create', function () {

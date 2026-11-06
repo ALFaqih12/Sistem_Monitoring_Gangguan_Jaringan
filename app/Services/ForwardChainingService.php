@@ -33,18 +33,72 @@ class ForwardChainingService
         // Digunakan untuk cleanup stale logs di akhir cycle.
         $matchedPairs = [];
 
+        // Get all devices first
+        $devices = Device::all();
+        if ($devices->isEmpty()) {
+            return ['detected' => [], 'checked' => 0];
+        }
+
+        // ========== ALWAYS save metrics for dashboard (regardless active rules) ==========
+        // Save metrics to device_metrics table (for dashboard display)
+        foreach ($devices as $device) {
+            // Query metrics based on device source (same pattern as rule evaluation)
+            if ($device->source === 'discovery' && $device->core_router_ip) {
+                // Discovery device: bandwidth via Simple Queue Core Router
+                $metrics = $this->prometheus->getAllMetricsWithSimpleQueue(
+                    $device->ip_address,
+                    $device->core_router_ip
+                );
+                
+                Log::debug("Dashboard metrics via Simple Queue", [
+                    'device_ip' => $device->ip_address,
+                    'core_router_ip' => $device->core_router_ip,
+                    'metrics' => $metrics,
+                ]);
+            } else {
+                // Manual device: query SNMP directly
+                $metrics = $this->prometheus->getAllMetrics($device->ip_address);
+                
+                Log::debug("Dashboard metrics via direct SNMP", [
+                    'device_ip' => $device->ip_address,
+                    'metrics' => $metrics,
+                ]);
+            }
+
+            try {
+                \App\Models\DeviceMetric::updateOrCreate(
+                    ['device_id' => $device->id],
+                    [
+                        'bandwidth' => $metrics['bandwidth'],
+                        'latency' => $metrics['latency'],
+                        'packet_loss' => $metrics['packet_loss'],
+                        'updated_at' => now(),
+                    ]
+                );
+
+                Log::debug("Dashboard metrics saved", [
+                    'device_id' => $device->id,
+                    'ip' => $device->ip_address,
+                    'source' => $device->source,
+                    'metrics' => $metrics,
+                ]);
+            } catch (\Exception $e) {
+                Log::error("Failed to save dashboard metrics: " . $e->getMessage(), [
+                    'device_id' => $device->id,
+                    'ip' => $device->ip_address,
+                ]);
+                // Continue - don't stop on single device failure
+            }
+        }
+        // ========== END: Metrics saved for dashboard ==========
+
+        // Now check active rules (for rule evaluation only)
         $activeRules = Rule::where('is_active', true)
             ->with(['conditions', 'targetDevice'])
             ->get();
 
         if ($activeRules->isEmpty()) {
-            // Tidak ada rule aktif -> semua issue logs sudah tidak relevan lagi
-            $this->cleanupStaleLogs([]);
-            return ['detected' => [], 'checked' => 0];
-        }
-
-        $devices = Device::all();
-        if ($devices->isEmpty()) {
+            // No active rules - but metrics already saved above!
             $this->cleanupStaleLogs([]);
             return ['detected' => [], 'checked' => 0];
         }
@@ -169,7 +223,16 @@ class ForwardChainingService
                     'packet_loss_actual' => $result['metrics']['packet_loss'],
                     'maps_url' => $device->maps_url,
                     'detected_at' => now(),
+                    'matched_parameters' => $result['matched_parameters'] ?? [], // NEW
                 ];
+                
+                // DEBUG: Log matched_parameters value
+                Log::debug("SaveIssueLog - matched_parameters debug", [
+                    'device_id' => $device->id,
+                    'rule_id' => $rule->id,
+                    'matched_parameters' => $result['matched_parameters'] ?? 'NOT_SET',
+                    'result_keys' => array_keys($result),
+                ]);
 
                 if ($existingLog) {
                     // Update baris yang sudah ada — jangan buat baris baru
@@ -359,6 +422,7 @@ class ForwardChainingService
         $allMet = true;
         $conditionsResult = [];
         $thresholds = []; // Issue #4: collect thresholds per parameter
+        $matchedParams = []; // NEW: Track which parameters matched
 
         foreach ($rule->conditions as $condition) {
             $actualValue = $metrics[$condition->parameter] ?? null;
@@ -392,6 +456,11 @@ class ForwardChainingService
                 'actual' => $actualValue, 'met' => $met,
             ];
 
+            // NEW: Track matched parameter
+            if ($met) {
+                $matchedParams[] = $condition->parameter;
+            }
+
             // Collect threshold for view (use the max threshold if multiple conditions on same param)
             if (!isset($thresholds[$condition->parameter]) || $condition->value > $thresholds[$condition->parameter]) {
                 $thresholds[$condition->parameter] = $condition->value;
@@ -407,6 +476,7 @@ class ForwardChainingService
             'metrics' => $metrics,
             'conditions' => $conditionsResult,
             'thresholds' => $thresholds, // Issue #4: pass to view
+            'matched_parameters' => array_unique($matchedParams), // NEW: which params matched
         ];
     }
 

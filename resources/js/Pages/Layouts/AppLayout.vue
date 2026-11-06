@@ -8,7 +8,7 @@
     <div class="sidebar">
       <div class="sidebar-header">
         <h3>Siwa Network</h3>
-        <p class="sidebar-subtitle">Monitoring & Expert System</p>
+        <p class="sidebar-subtitle">Sistem Pakar Forward Chaining Jaringan</p>
       </div>
       <ul class="sidebar-menu">
         <li>

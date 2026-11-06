@@ -211,7 +211,7 @@
       <!-- Discovery Results -->
       <div v-if="discoveredClients.length > 0" class="card">
         <div class="card-header" style="margin-bottom: 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="margin-bottom: 12px;">
             <h3>Client Devices Discovered ({{ filteredClients.length }})</h3>
             <div style="display: flex; align-items: center; gap: 16px;">
               <!-- Last refresh time indicator -->
@@ -226,8 +226,8 @@
                 :disabled="isRefreshing"
                 class="btn btn-secondary btn-sm"
               >
-                <span v-if="isRefreshing">🔄 Refreshing...</span>
-                <span v-else>🔄 Refresh</span>
+                <span v-if="isRefreshing">Refreshing...</span>
+                <span v-else>Refresh</span>
               </button>
             </div>
           </div>

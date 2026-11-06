@@ -43,4 +43,13 @@ class Device extends Model
             }
         });
     }
+
+    /**
+     * Relasi ke DeviceMetric untuk monitoring display.
+     * Latest metrics yang di-populate oleh CRON setiap menit.
+     */
+    public function latestMetrics()
+    {
+        return $this->hasOne(DeviceMetric::class, 'device_id')->latest('updated_at');
+    }
 }

@@ -17,6 +17,7 @@ class IssueLog extends Model
         'bandwidth_actual',
         'latency_actual',
         'packet_loss_actual',
+        'matched_parameters', // NEW
         'maps_url',
         'detected_at',
     ];
@@ -27,6 +28,7 @@ class IssueLog extends Model
         'bandwidth_actual' => 'decimal:2',
         'latency_actual' => 'decimal:2',
         'packet_loss_actual' => 'decimal:2',
+        'matched_parameters' => 'array', // NEW: JSON column cast
     ];
 
     // Pastikan accessor otomatis ada di JSON response (termasuk Inertia props dan API response).

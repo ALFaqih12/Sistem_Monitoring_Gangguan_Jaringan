@@ -28,7 +28,7 @@ function submit() {
       <!-- Header -->
       <div class="auth-header">
         <h1>SIWA Network</h1>
-        <p class="subtitle">Monitoring Gangguan Jaringan</p>
+        <p class="subtitle">Sistem Pakar Forward Chaining Gangguan Jaringan</p>
       </div>
       
       <!-- Error message -->

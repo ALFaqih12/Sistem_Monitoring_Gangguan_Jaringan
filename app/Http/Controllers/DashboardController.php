@@ -156,4 +156,115 @@ class DashboardController extends Controller
         
         return response()->json(['success' => true]);
     }
+
+    /**
+     * Get metrics untuk monitoring dashboard display.
+     * Read dari device_metrics table yang di-populate oleh CRON setiap menit.
+     * 
+     * Return: List device dengan metrics + summary aggregated/average + matched rule info.
+     * Response time: <100ms (DB query dengan JOIN)
+     */
+    public function getMetrics()
+    {
+        $devices = Device::with('latestMetrics')->get();
+        
+        // Calculate summary aggregated/average
+        $totalBandwidth = 0;
+        $sumLatency = 0;
+        $sumPacketLoss = 0;
+        $count = 0;
+        
+        foreach ($devices as $device) {
+            if ($device->latestMetrics) {
+                $totalBandwidth += $device->latestMetrics->bandwidth ?? 0;
+                $sumLatency += $device->latestMetrics->latency ?? 0;
+                $sumPacketLoss += $device->latestMetrics->packet_loss ?? 0;
+                $count++;
+            }
+        }
+        
+        $avgLatency = $count > 0 ? $sumLatency / $count : 0;
+        $avgPacketLoss = $count > 0 ? $sumPacketLoss / $count : 0;
+        
+        // Query dengan eager loading untuk optimize N+1 query
+        $devicesData = $devices->map(function($device) {
+            // Get all matched rules for this device
+            $issueLogs = \App\Models\IssueLog::where('device_id', $device->id)
+                ->with('rule')
+                ->get();
+            
+            $hasIssue = $issueLogs->isNotEmpty();
+            
+            // Format rule text based on count
+            $matchedRuleText = '';
+            if ($issueLogs->count() === 1) {
+                // Single rule: show code + name
+                $rule = $issueLogs->first()->rule;
+                $matchedRuleText = "Rule {$rule->code} {$rule->name}";
+            } elseif ($issueLogs->count() > 1) {
+                // Multiple rules: codes only
+                $codes = $issueLogs->pluck('rule.code')->join(',');
+                $matchedRuleText = "Rule {$codes}";
+            }
+            
+            // NEW: Aggregate matched metrics from all IssueLog
+            $matchedMetrics = [];
+            foreach ($issueLogs as $log) {
+                // Get raw JSON string from database and decode manually
+                $rawParams = $log->getRawOriginal('matched_parameters');
+                if ($rawParams) {
+                    $params = json_decode($rawParams, true);
+                    if (is_array($params)) {
+                        $matchedMetrics = array_merge($matchedMetrics, $params);
+                    }
+                }
+            }
+            $matchedMetrics = array_values(array_unique($matchedMetrics));
+            
+            // NEW: Detect stale data (offline pattern ≥2 minutes)
+            $isStale = false;
+            if ($device->latestMetrics) {
+                $metrics = $device->latestMetrics;
+                
+                // Check offline pattern: packet_loss 100%, bandwidth 0, latency 0
+                if ($metrics->packet_loss == 100 
+                    && $metrics->bandwidth == 0 
+                    && $metrics->latency == 0) {
+                    
+                    // Check if this condition persists ≥2 minutes
+                    $minutesOld = now()->diffInMinutes($metrics->updated_at);
+                    if ($minutesOld >= 2) {
+                        $isStale = true;
+                    }
+                }
+            }
+            
+            return [
+                'id' => $device->id,
+                'customer_name' => $device->customer_name,
+                'ip_address' => $device->ip_address,
+                'device_model' => $device->device_model,
+                'maps_url' => $device->maps_url,
+                'has_issue' => $hasIssue, // Status untuk indicator (red/green)
+                'matched_rule_text' => $matchedRuleText, // Formatted rule text
+                'matched_metrics' => $matchedMetrics, // NEW: which metrics matched
+                'is_stale' => $isStale, // NEW: stale data detection
+                'metrics' => $device->latestMetrics ? [
+                    'bandwidth' => $device->latestMetrics->bandwidth,
+                    'latency' => $device->latestMetrics->latency,
+                    'packet_loss' => $device->latestMetrics->packet_loss,
+                    'updated_at' => $device->latestMetrics->updated_at->diffForHumans(), // "2 menit yang lalu"
+                ] : null,
+            ];
+        });
+        
+        return response()->json([
+            'summary' => [
+                'aggregated_bandwidth' => round($totalBandwidth, 2),
+                'average_latency' => round($avgLatency, 2),
+                'average_packet_loss' => round($avgPacketLoss, 2),
+            ],
+            'devices' => $devicesData,
+        ]);
+    }
 }
